@@ -14,8 +14,9 @@ from sqlite3 import dbapi2 as sqlite3
 from hashlib import md5
 from datetime import datetime
 from flask import Flask, request, session, url_for, redirect, \
-     render_template, abort, g, flash, _app_ctx_stack
+     render_template, abort, g, flash, _app_ctx_stack, jsonify
 from werkzeug import check_password_hash, generate_password_hash
+from flask_basicauth import BasicAuth
 
 
 # configuration
@@ -119,7 +120,7 @@ def before_request():
     if 'user_id' in session:
         g.user = query_db('select * from user where user_id = ?',
                           [session['user_id']], one=True)
-                          
+
 @app.route('/')
 def timeline():
     """Shows a users timeline or if no user is logged in it will
@@ -272,6 +273,18 @@ def logout():
     flash('You were logged out')
     session.pop('user_id', None)
     return redirect(url_for('public_timeline'))
+
+@app.route('/api/user', methods = ['GET'])
+def api_user_timeline():
+    db = get_db()
+    username = "Daniel"
+    db.execute('''select user_id from user where username="''' + str(username) + '''"''')
+    user_id = db.cursor().fetchone()
+    db.execute('''select * from message where author_id="''' + str(user_id) + '''"''')
+    r = [dict((db.cursor().description[i][0], value)
+              for i, value in enumerate(row)) for row in db.cursor().fetchall()]
+    return jsonify({'messages' : r})
+    #return "Hello"
 
 
 # add some filters to jinja
