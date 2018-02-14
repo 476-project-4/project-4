@@ -276,15 +276,16 @@ def logout():
 
 @app.route('/api/user', methods = ['GET'])
 def api_user_timeline():
-    db = get_db()
+    cursor = get_db().cursor()
     username = "Daniel"
-    db.execute('''select user_id from user where username="''' + str(username) + '''"''')
-    user_id = db.cursor().fetchone()
-    db.execute('''select * from message where author_id="''' + str(user_id) + '''"''')
-    r = [dict((db.cursor().description[i][0], value)
-              for i, value in enumerate(row)) for row in db.cursor().fetchall()]
+    cursor.execute('''select user_id from user where username="''' + str(username) + '''"''')
+    user_id = cursor.fetchone()
+    if user_id == None:
+        return user_id
+    cursor.execute('''select * from message where author_id="''' + str(user_id[0]) + '''"''')
+    r = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({'messages' : r})
-    #return "Hello"
 
 
 # add some filters to jinja
