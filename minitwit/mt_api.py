@@ -38,13 +38,14 @@ def close_database(exception):
     if hasattr(top, 'sqlite_db'):
         top.sqlite_db.close()
 
-@app.route('/api/user', methods = ['GET'])
-def user_timeline():
-    cursor = get_db()
-    username = request.json.get('username')
-    cursor.execute('''select user_id from user where user="''' + str(username) + '''"''')
-    user_id = cursor.fetchall()[0][0]
-    cursor.execute('''select * from message where author_id="''' + str(user_id) + '''"''')
+@app.route('/users/<username>/timeline', methods = ['GET'])
+def users_timeline(username):
+    cursor = get_db().cursor()
+    cursor.execute('''select user_id from user where username="''' + str(username) + '''"''')
+    user_id = cursor.fetchone()
+    if user_id == None:
+        return user_id
+    cursor.execute('''select * from message where author_id="''' + str(user_id[0]) + '''"''')
     r = [dict((cursor.description[i][0], value)
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({'messages' : r})
