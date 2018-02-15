@@ -138,7 +138,6 @@ def timeline():
         order by message.pub_date desc limit ?''',
         [session['user_id'], session['user_id'], PER_PAGE]))
 
-
 @app.route('/public')
 def public_timeline():
     """Displays the latest messages of all users."""
@@ -146,7 +145,6 @@ def public_timeline():
         select message.*, user.* from message, user
         where message.author_id = user.user_id
         order by message.pub_date desc limit ?''', [PER_PAGE]))
-
 
 @app.route('/<username>')
 def user_timeline(username):
@@ -215,7 +213,6 @@ def add_message():
         flash('Your message was recorded')
     return redirect(url_for('timeline'))
 
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Logs the user in."""
@@ -274,10 +271,22 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('public_timeline'))
 
-@app.route('/api/user', methods = ['GET'])
-def api_user_timeline():
+#testing API endpoints
+@app.route('/timeline', methods = ['GET'])
+def get_timeline():
     cursor = get_db().cursor()
-    username = "Daniel"
+    messages = cursor.execute('''
+        select user.username, message.text, message.pub_date from message, user
+        where message.author_id = user.user_id
+        order by message.pub_date desc limit ?''', [PER_PAGE])
+    r = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
+    return jsonify({'timeline' : r})
+
+
+@app.route('/users/<username>/timeline', methods = ['GET'])
+def users_timeline(username):
+    cursor = get_db().cursor()
     cursor.execute('''select user_id from user where username="''' + str(username) + '''"''')
     user_id = cursor.fetchone()
     if user_id == None:

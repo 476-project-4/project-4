@@ -16,10 +16,6 @@ def check_credentials(username, password):
             return True
     return False
 
-
-
-
-
 def get_db():
     """Opens a new database connection if there is none yet for the
     current application context.
@@ -38,6 +34,18 @@ def close_database(exception):
     if hasattr(top, 'sqlite_db'):
         top.sqlite_db.close()
 
+@app.route('/timeline', methods = ['GET'])
+def get_timeline():
+    cursor = get_db().cursor()
+    messages = cursor.execute('''
+        select user.username, message.text, message.pub_date from message, user
+        where message.author_id = user.user_id
+        order by message.pub_date desc limit ?''', [PER_PAGE])
+    r = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
+    return jsonify({'timeline' : r})
+
+
 @app.route('/users/<username>/timeline', methods = ['GET'])
 def users_timeline(username):
     cursor = get_db().cursor()
@@ -48,4 +56,4 @@ def users_timeline(username):
     cursor.execute('''select * from message where author_id="''' + str(user_id[0]) + '''"''')
     r = [dict((cursor.description[i][0], value)
               for i, value in enumerate(row)) for row in cursor.fetchall()]
-    return jsonify({'messages' : r})
+    return jsonify({'messages' : r})   
