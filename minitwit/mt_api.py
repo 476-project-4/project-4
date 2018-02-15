@@ -34,26 +34,56 @@ def close_database(exception):
     if hasattr(top, 'sqlite_db'):
         top.sqlite_db.close()
 
-@app.route('/timeline', methods = ['GET'])
+@app.route('/api/timeline', methods = ['GET'])
 def get_timeline():
     cursor = get_db().cursor()
     messages = cursor.execute('''
         select user.username, message.text, message.pub_date from message, user
         where message.author_id = user.user_id
         order by message.pub_date desc limit ?''', [PER_PAGE])
+    if messages == None:
+        return jsonify({'Error Code' : '404'})
     r = [dict((cursor.description[i][0], value)
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({'timeline' : r})
 
+@app.route('/api/users', methods = ['GET'])
+def get_users():
+    cursor = get_db().cursor()
+    users = cursor.execute('''select * from user;''')
+    r = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
+    return jsonify({'users' : r})
 
-@app.route('/users/<username>/timeline', methods = ['GET'])
+
+@app.route('/api/users/<username>/timeline', methods = ['GET'])
 def users_timeline(username):
+    if request.method != 'GET':
+        return jsonify({'status code' : '405'})
     cursor = get_db().cursor()
     cursor.execute('''select user_id from user where username="''' + str(username) + '''"''')
     user_id = cursor.fetchone()
     if user_id == None:
-        return user_id
+        return jsonify({'status code' : '404'})
     cursor.execute('''select * from message where author_id="''' + str(user_id[0]) + '''"''')
     r = [dict((cursor.description[i][0], value)
               for i, value in enumerate(row)) for row in cursor.fetchall()]
-    return jsonify({'messages' : r})   
+    return jsonify({str(username) + '\'s timeline' : r})
+
+@app.route('/api/users/<username>/<passw>/<email>', methods = ['POST'])
+def add_user(username, passw, email):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''select username from user;''')
+    current_users = cursor.fetchall()
+    for i in range(0, len(current_users)):
+        if username == current_users[i][0]:
+            return jsonify({'status code' : 'BAD'})
+    cursor.execute('''insert into user (username, email, pw_hash)
+     values (?, ?, ?)''', [username, email, generate_password_hash(passw)])
+    db.commit()
+    return jsonify({'status code' : '200'})
+
+@app.route('/api/messages/<username>/<text>', methods = ['POST'])
+def insert_message(username, text):
+    cursor = get_db.cursor()
