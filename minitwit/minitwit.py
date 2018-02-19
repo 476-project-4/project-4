@@ -18,6 +18,20 @@ from flask import Flask, request, session, url_for, redirect, \
 from werkzeug import check_password_hash, generate_password_hash
 from flask_basicauth import BasicAuth
 
+class MtAuth(BasicAuth):
+    def check_credentials(self, username, password):
+        cursor = get_db().cursor()
+        cursor.execute('''select pw_hash from user where username="''' + str(username) + '''"''')
+        data = cursor.fetchone()
+        if data != None:
+            print data[0]
+            print password
+            generate_password_hash(password)
+            print
+            if generate_password_hash(password) == data[0]:
+                print "bar"
+                return True
+        return False
 
 # configuration
 DATABASE = 'minitwit.db'
@@ -27,6 +41,7 @@ SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
 
 # create our little application :)
 app = Flask('minitwit')
+basic_auth = mt_auth(app)
 app.config.from_object(__name__)
 app.config.from_envvar('MINITWIT_SETTINGS', silent=True)
 
@@ -87,6 +102,11 @@ def popdb_command():
     pop_db()
     print('Populating the Database.')
 
+@app.cli.command('restartdb')
+def restartdb_command():
+    initdb()
+    popdb()
+    print('Remaking the Database.')
 
 def query_db(query, args=(), one=False):
     """Queries the database and returns a list of dictionaries."""
@@ -308,23 +328,71 @@ def users_timeline(username):
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({str(username) + '\'s timeline' : r})
 
-@app.route('/api/users/<username>/<passw>/<email>', methods = ['POST'])
-def add_user(username, passw, email):
+@app.route('/api/users', methods = ['POST'])
+def add_user():
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('''select username from user;''')
+    cursor.execute('''select pw_hash from user where username="''' + request.authorization["username"] + '''";''')
     current_users = cursor.fetchall()
-    for i in range(0, len(current_users)):
-        if username == current_users[i][0]:
-            return jsonify({'status code' : 'BAD'})
-    cursor.execute('''insert into user (username, email, pw_hash)
-     values (?, ?, ?)''', [username, email, generate_password_hash(passw)])
-    db.commit()
-    return jsonify({'status code' : '200'})
+    if basic_auth.check_credentials(request.authorization["username"], request.authorization["password"]):
+        r = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
+        cursor.execute('''insert into user (username, email, pw_hash)
+         values (?, ?, ?)''', [request.json.get('username'), request.json.get('email'), generate_password_hash(request.json.get('password'))])
+        db.commit()
+        return jsonify({'status code' : '200'})
+    return jsonify({'status code' : '405'})
+
+@app.route('/api/users/<username>/followers', methods = ['GET'])
+def get_followers(username):
+    print "foo"
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''select user_id from user where username="''' + str(username) +'''"''')
+    user_id = cursor.fetchone()
+    if user_id is None:
+        return jsonify({"status code" : "404"})
+    cursor.execute('''select whom_id from follower where who_id="''' + str(user_id[0]) + '''"''')
+    follower_ids = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
+    follower_names = {}
+    for i in follower_ids:
+        name = cursor.execute('''select username from user where user_id="''' + str(i["whom_id"]) + '''"''').fetchone()[0]
+        print str(name)
+        for j in range(0, len(follower_ids)):
+            follower_names[j] = str(name)
+    return_dict = {}
+    for i in range(0, len(follower_names)):
+        return_dict[str(i + 1)] = follower_names[i]
+    return jsonify({"followers" : return_dict})
+
+@app.route('/api/users/<username>/following', methods = ['GET'])
+def get_following(username):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('''select user_id from user where username="''' + str(username) +'''"''')
+    user_id = cursor.fetchone()
+    if user_id is None:
+        return jsonify({"status code" : "404"})
+    cursor.execute('''select whom_id from follower where who_id="''' + str(user_id[0]) + '''"''')
+    follower_ids = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
+    follower_names = {}
+    for i in follower_ids:
+        name = cursor.execute('''select username from user where user_id="''' + str(i["whom_id"]) + '''"''').fetchone()[0]
+        print str(name)
+        for j in range(0, len(follower_ids)):
+            follower_names[j] = str(name)
+    return_dict = {}
+    for i in range(0, len(follower_names)):
+        return_dict[str(i + 1)] = follower_names[i]
+    return jsonify({"followers" : return_dict})
+
 
 @app.route('/api/messages/<username>/<text>', methods = ['POST'])
 def insert_message(username, text):
     cursor = get_db.cursor()
+    current_time = int(round(time.time() * 1000))
 
 
 # add some filters to jinja
