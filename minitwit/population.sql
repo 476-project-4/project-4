@@ -11,28 +11,28 @@ INSERT INTO follower (who_id, whom_id)
 VALUES (4, 1);
 
 Insert Into message (author_id, text, pub_date)
-VALUES (1, 'yo', 201802090607);
+VALUES (1, 'I', 6);
 Insert Into message (author_id, text, pub_date)
-VALUES (1, 'get', 201802090607);
+VALUES (1, 'can', 5);
 Insert Into message (author_id, text, pub_date)
-VALUES (1, 'FUCKED', 201802090607);
+VALUES (1, 'code', 4);
 Insert Into message (author_id, text, pub_date)
-VALUES (1, 'AVERY', 201802090607);
+VALUES (1, 'Im', 3);
 Insert Into message (author_id, text, pub_date)
-VALUES (1, 'I CAN CODE', 201802090607);
+VALUES (1, 'not a', 2);
 Insert Into message (author_id, text, pub_date)
-VALUES (1, 'HAHA', 201802090607);
+VALUES (1, 'moron!', 1);
 Insert Into message (author_id, text, pub_date)
-VALUES (1, 'oy', 201802090607);
+VALUES (1, 'oy', 0);
 Insert Into message (author_id, text, pub_date)
-VALUES (1, 'yo', 201802090607);
+VALUES (1, 'yo', 0);
 
 
 Insert Into message (author_id, text, pub_date)
-VALUES (2, 'hey', 201802090607);
+VALUES (2, 'hey', 0);
 
 Insert Into message (author_id, text, pub_date)
-VALUES (3, 'sup', 201802090607);
+VALUES (3, 'sup', 0);
 
 Insert Into message (author_id, text, pub_date)
-VALUES (4, '!', 201802090607);
+VALUES (4, '!', 0);
