@@ -10,6 +10,7 @@
 """
 
 import time
+import json
 from sqlite3 import dbapi2 as sqlite3
 from hashlib import md5
 from datetime import datetime
@@ -41,7 +42,7 @@ SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
 
 # create our little application :)
 app = Flask('minitwit')
-basic_auth = mt_auth(app)
+basic_auth = MtAuth(app)
 app.config.from_object(__name__)
 app.config.from_envvar('MINITWIT_SETTINGS', silent=True)
 
@@ -113,6 +114,14 @@ def query_db(query, args=(), one=False):
     cur = get_db().execute(query, args)
     rv = cur.fetchall()
     return (rv[0] if rv else None) if one else rv
+
+def query_db_json(query, desc, args=(), one=False):
+    """Queries the database and returns a json"""
+    cursor = get_db().cursor()
+    cursor.execute(query, args)
+    r = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
+    return jsonify({desc : r})
 
 
 def get_user_id(username):
@@ -386,13 +395,25 @@ def get_following(username):
     return_dict = {}
     for i in range(0, len(follower_names)):
         return_dict[str(i + 1)] = follower_names[i]
-    return jsonify({"followers" : return_dict})
+    return jsonify({"following" : return_dict})
 
 
 @app.route('/api/messages/<username>/<text>', methods = ['POST'])
 def insert_message(username, text):
     cursor = get_db.cursor()
     current_time = int(round(time.time() * 1000))
+
+@app.route('/api/<username>/dashboard', methods = ['GET'])
+def get_dash(username):
+    messages = query_db_json('''
+        select message.*, user.* from message, user
+        where message.author_id = user.user_id and (
+            user.user_id = ? or
+            user.user_id in (select whom_id from follower
+                                    where who_id = ?))
+        order by message.pub_date desc limit ?''', 'dashboard',
+        [5, 5, PER_PAGE])
+    return messages
 
 
 # add some filters to jinja

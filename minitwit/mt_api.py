@@ -8,6 +8,8 @@ from werkzeug import check_password_hash, generate_password_hash
 from flask_basicauth import BasicAuth
 
 class MtAuth(BasicAuth):
+    def __init__(self):
+        BasicAuth.__init__(self)
     def check_credentials(self, username, password):
         cursor = get_db().cursor()
         cursor.execute('''select pw_hash from user where username="''' + str(username) + '''"''')
@@ -23,7 +25,7 @@ class MtAuth(BasicAuth):
         return False
 
 app = Flask('minitwit')
-basic_auth = mt_auth(app)
+basic_auth = MtAuth(app)
 
 def get_db():
     """Opens a new database connection if there is none yet for the
@@ -35,6 +37,12 @@ def get_db():
         top.sqlite_db.row_factory = sqlite3.Row
     return top.sqlite_db
 
+def query_db(query, args=(), one=False):
+    """Queries the database and returns a list of dictionaries."""
+    cur = get_db().execute(query, args)
+    rv = cur.fetchall()
+    return (rv[0] if rv else None) if one else rv
+
 
 @app.teardown_appcontext
 def close_database(exception):
@@ -44,6 +52,7 @@ def close_database(exception):
         top.sqlite_db.close()
 
 @app.route('/api/timeline', methods = ['GET'])
+@basic_auth.required
 def get_timeline():
     cursor = get_db().cursor()
     messages = cursor.execute('''
@@ -136,7 +145,7 @@ def get_following(username):
     return_dict = {}
     for i in range(0, len(follower_names)):
         return_dict[str(i + 1)] = follower_names[i]
-    return jsonify({"followers" : return_dict})
+    return jsonify({"following" : return_dict})
 
 @app.route('/api/users/<username>/<passw>/<email>', methods = ['POST'])
 def add_user(username, passw, email):
@@ -155,3 +164,19 @@ def add_user(username, passw, email):
 @app.route('/api/messages/<username>/<text>', methods = ['POST'])
 def insert_message(username, text):
     cursor = get_db.cursor()
+
+
+#need to make a follow api route requires auth
+
+#'''select message.*, user.* from message, user where message.author_id = user.user_id and (user.user_id = ? or user.user_id in (select whom_id from follower where who_id = ?)) order by message.pub_date desc limit ?'''
+@app.route('/api/<username>/dashboard', methods = ['GET'])
+def get_dash(username):
+    messages = query_db('''
+        select message.*, user.* from message, user
+        where message.author_id = user.user_id and (
+            user.user_id = ? or
+            user.user_id in (select whom_id from follower
+                                    where who_id = ?))
+        order by message.pub_date desc limit ?''',
+        [5, 5, PER_PAGE])
+    return jsonify(messages)
