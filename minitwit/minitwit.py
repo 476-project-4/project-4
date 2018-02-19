@@ -412,7 +412,7 @@ def get_dash(username):
             user.user_id in (select whom_id from follower
                                     where who_id = ?))
         order by message.pub_date desc limit ?''', 'dashboard',
-        [5, 5, PER_PAGE])
+        [get_user_id(username), get_user_id(username), PER_PAGE])
     return messages
 
 
