@@ -1,3 +1,10 @@
+"""
+Made by Kazander Antonio and Daniel Sollis
+To use, in the folder containing mt_api.py, run the command
+export FLASK_APP=./mt_api.py
+Usage of each of the endpoints is explained in the comment above the endpoint.
+"""
+
 import time
 import datetime
 import json
@@ -26,7 +33,7 @@ DEBUG = True
 SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
 
 # create our little application :)
-app = Flask('mt_api')
+app = Flask('minitwit')
 basic_auth = MtAuth(app)
 app.config.from_object(__name__)
 app.config.from_envvar('MINITWIT_SETTINGS', silent=True)
@@ -121,8 +128,12 @@ def get_username(user_id):
                   [user_id], one=True)
     return rv[0] if rv else None
 
+#===============================================================================
 #testing API endpoints
-"""API Route for getting all users"""
+"""
+API Route for getting all users
+Just send a GET request to /api/users to get all users back in a json.
+"""
 @app.route('/api/users', methods = ['GET'])
 def get_users():
     cursor = get_db().cursor()
@@ -131,7 +142,10 @@ def get_users():
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({'users' : r})
 
-"""API Route for Public Timeline"""
+"""
+API Route for Public Timeline
+Just send a GET requuest to /api/public to get all of the public timeline back in a json.
+"""
 @app.route('/api/public', methods = ['GET'])
 def get_public():
     messages=query_db_json('''
@@ -140,7 +154,11 @@ def get_public():
         order by message.pub_date desc limit ?''', 'public timeline', [PER_PAGE])
     return messages
 
-"""API Route for getting users timeline (All messages made by user)"""
+"""
+API Route for getting users timeline (All messages made by user)
+Send a GET request to "/api/users/<username>/timeline" (replacing <username> with desired username)
+to get back all of that users posts in a json.
+"""
 @app.route('/api/users/<username>/timeline', methods = ['GET'])
 def users_timeline(username):
     if request.method != 'GET':
@@ -155,7 +173,14 @@ def users_timeline(username):
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({str(username) + '\'s timeline' : r})
 
-"""API Route for registering new user"""
+"""
+API Route for registering new user
+This route only takes POST requests.
+A new user requires a new username, password, and email.
+This route doesn't actually require authentication, but still uses those fields.
+The username and password should be put into the authorization form of the request, using Basic Authentication.
+The email of the user should be put into the request body under the key "email"
+"""
 @app.route('/api/register', methods = ['POST'])
 def add_user():
     cursor = get_db().cursor()
@@ -176,7 +201,11 @@ def add_user():
 
 
 
-"""API Route for getting users who username is followed by"""
+"""
+API Route for getting users who username is followed by
+Send a GET request to "/api/users/<username>/followers" (replacing <username> with desired username)
+to get back all of the users following that user in a json.
+"""
 @app.route('/api/users/<username>/followers', methods = ['GET'])
 def get_followers(username):
     cursor = get_db().cursor()
@@ -195,7 +224,10 @@ def get_followers(username):
         return_dict[str(i + 1)] = follower_names[i]
     return jsonify({"followers" : return_dict})
 
-"""API Route for getting users who username is following"""
+"""
+API Route for getting users who username is following
+Send a GET request to "/api/users/<username>/following" (replacing <username> with desired username)
+to get back all of the users that user is following in a json."""
 @app.route('/api/users/<username>/following', methods = ['GET'])
 def get_following(username):
     cursor = get_db().cursor()
@@ -214,7 +246,11 @@ def get_following(username):
         return_dict[str(i + 1)] = follower_names[i]
     return jsonify({"following" : return_dict})
 
-"""API Route for posting"""
+"""
+API Route for posting
+This route requires authentication, the fields must be filled out accordingly in the request.
+In the request body, put the desired text of the post under the "message" form.
+"""
 @app.route('/api/users/<username>/post', methods = ['POST'])
 @basic_auth.required
 def insert_message(username):
@@ -231,7 +267,11 @@ def insert_message(username):
     else:
         return jsonify({"status code" : "403 Forbidden: You cannot post to a user that isn't you"})
 
-"""API route for getting a users Dashboard (Timeline of followed users)"""
+"""
+API route for getting a users Dashboard (Timeline of followed users)
+This route requires authentication, the fields must be filled out accordingly in the request.
+Sending a GET request returns the dashboard for that user, which is all the messages of all the users that the authenticated user follows.
+"""
 @app.route('/api/<username>/dashboard', methods = ['GET'])
 @basic_auth.required
 def get_dash(username):
@@ -248,7 +288,14 @@ def get_dash(username):
     else:
         return jsonify({"status code" : "403 Forbidden: This dashboard doesn't belong to you"})
 
-"""Route for Api Follow"""
+"""
+Route for Api Follow
+This route requires authentication, the fields must be filled out accordingly in the request.
+Sending an authenticated POST request to this endpoint makes the follower user follow the followee user.
+Ex.
+/api/users/Daniel/follow/Kaz
+With authenticated Daniel login would make the user Daniel follow the user Kaz
+"""
 @app.route('/api/users/<follower>/follow/<followee>', methods = ['POST'])
 @basic_auth.required
 def api_follow(follower, followee):
@@ -268,7 +315,14 @@ def api_follow(follower, followee):
     else:
         return jsonify({"status code" : "403 Forbidden: You're trying to make someone who isn't you follow someone else."})
 
-"""Route for Api Unfollow"""
+"""
+Route for Api Unfollow
+This route requires authentication, the fields must be filled out accordingly in the request.
+Sending an authenticated POST request to this endpoint makes the follower user unfollow the followee user.
+Ex.
+/api/users/Daniel/follow/Kaz
+With authenticated Daniel login would make the user Daniel unfollow the user Kaz
+"""
 @app.route('/api/users/<follower>/unfollow/<followee>', methods = ['POST'])
 @basic_auth.required
 def api_unfollow(follower, followee):
