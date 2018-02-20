@@ -149,7 +149,7 @@ Just send a GET requuest to /api/public to get all of the public timeline back i
 @app.route('/api/public', methods = ['GET'])
 def get_public():
     messages=query_db_json('''
-        select message.*, user.* from message, user
+        select message.*, user.username from message, user
         where message.author_id = user.user_id
         order by message.pub_date desc limit ?''', 'public timeline', [PER_PAGE])
     return messages
@@ -277,7 +277,7 @@ Sending a GET request returns the dashboard for that user, which is all the mess
 def get_dash(username):
     if request.authorization["username"] == username:
         messages = query_db_json('''
-            select message.*, user.* from message, user
+            select message.*, user.username from message, user
             where message.author_id = user.user_id and (
                 user.user_id = ? or
                 user.user_id in (select whom_id from follower
