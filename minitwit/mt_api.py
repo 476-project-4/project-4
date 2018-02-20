@@ -272,7 +272,7 @@ API route for getting a users Dashboard (Timeline of followed users)
 This route requires authentication, the fields must be filled out accordingly in the request.
 Sending a GET request returns the dashboard for that user, which is all the messages of all the users that the authenticated user follows.
 """
-@app.route('/api/<username>/dashboard', methods = ['GET'])
+@app.route('/api/users/<username>/dashboard', methods = ['GET'])
 @basic_auth.required
 def get_dash(username):
     if request.authorization["username"] == username:
@@ -318,12 +318,12 @@ def api_follow(follower, followee):
 """
 Route for Api Unfollow
 This route requires authentication, the fields must be filled out accordingly in the request.
-Sending an authenticated POST request to this endpoint makes the follower user unfollow the followee user.
+Sending an authenticated DELETE request to this endpoint makes the follower user unfollow the followee user.
 Ex.
 /api/users/Daniel/follow/Kaz
 With authenticated Daniel login would make the user Daniel unfollow the user Kaz
 """
-@app.route('/api/users/<follower>/unfollow/<followee>', methods = ['POST'])
+@app.route('/api/users/<follower>/unfollow/<followee>', methods = ['DELETE'])
 @basic_auth.required
 def api_unfollow(follower, followee):
     if request.authorization["username"] == follower:
