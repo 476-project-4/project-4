@@ -413,7 +413,7 @@ def insert_message(username):
         return jsonify({"status code" : "403 Forbidden: You cannot post to a user that isn't you"})
 
 """API route for getting a users Dashboard (Timeline of followed users)"""
-@app.route('/api/<username>/dashboard', methods = ['GET'])
+@app.route('/api/users/<username>/dashboard', methods = ['GET'])
 @basic_auth.required
 def get_dash(username):
     if request.authorization["username"] == username:
@@ -450,7 +450,7 @@ def api_follow(follower, followee):
         return jsonify({"status code" : "403 Forbidden: You're trying to make someone who isn't you follow someone else."})
 
 """Route for Api Unfollow"""
-@app.route('/api/users/<follower>/unfollow/<followee>', methods = ['POST'])
+@app.route('/api/users/<follower>/unfollow/<followee>', methods = ['DELETE'])
 @basic_auth.required
 def api_unfollow(follower, followee):
     if request.authorization["username"] == follower:
