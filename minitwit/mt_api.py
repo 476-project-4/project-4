@@ -168,7 +168,7 @@ def users_timeline(username):
     user_id = cursor.fetchone()
     if user_id == None:
         return jsonify({'status code' : '404'})
-    cursor.execute('''select * from message where author_id="''' + str(user_id[0]) + '''"''')
+    cursor.execute('''select * from message, user where author_id="''' + str(user_id[0]) + '''" and user_id = "''' + str(user_id[0]) + '''"''')
     r = [dict((cursor.description[i][0], value)
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({str(username) + '\'s timeline' : r})

@@ -12,6 +12,7 @@
 import time
 import datetime
 import json
+import requests
 from sqlite3 import dbapi2 as sqlite3
 from hashlib import md5
 from datetime import datetime
@@ -19,6 +20,7 @@ from flask import Flask, request, session, url_for, redirect, \
      render_template, abort, g, flash, _app_ctx_stack, jsonify
 from werkzeug import check_password_hash, generate_password_hash
 from flask_basicauth import BasicAuth
+from mt_api import get_username, get_user_id, query_db, query_db_json, get_db, close_database
 
 class MtAuth(BasicAuth):
     def check_credentials(self, username, password):
@@ -41,26 +43,6 @@ app = Flask('minitwit')
 basic_auth = MtAuth(app)
 app.config.from_object(__name__)
 app.config.from_envvar('MINITWIT_SETTINGS', silent=True)
-
-
-def get_db():
-    """Opens a new database connection if there is none yet for the
-    current application context.
-    """
-    top = _app_ctx_stack.top
-    if not hasattr(top, 'sqlite_db'):
-        top.sqlite_db = sqlite3.connect(app.config['DATABASE'])
-        top.sqlite_db.row_factory = sqlite3.Row
-    return top.sqlite_db
-
-
-@app.teardown_appcontext
-def close_database(exception):
-    """Closes the database again at the end of the request."""
-    top = _app_ctx_stack.top
-    if hasattr(top, 'sqlite_db'):
-        top.sqlite_db.close()
-
 
 def init_db():
     """Initializes the database."""
@@ -99,40 +81,6 @@ def popdb_command():
     pop_db()
     print('Populating the Database.')
 
-@app.cli.command('restartdb')
-def restartdb_command():
-    initdb()
-    popdb()
-    print('Remaking the Database.')
-
-def query_db(query, args=(), one=False):
-    """Queries the database and returns a list of dictionaries."""
-    cur = get_db().execute(query, args)
-    rv = cur.fetchall()
-    return (rv[0] if rv else None) if one else rv
-
-def query_db_json(query, desc, args=(), one=False):
-    """Queries the database and returns a json"""
-    cursor = get_db().cursor()
-    cursor.execute(query, args)
-    r = [dict((cursor.description[i][0], value)
-              for i, value in enumerate(row)) for row in cursor.fetchall()]
-    return jsonify({desc : r})
-
-
-def get_user_id(username):
-    """Convenience method to look up the id for a username."""
-    rv = query_db('select user_id from user where username = ?',
-                  [username], one=True)
-    return rv[0] if rv else None
-
-def get_username(user_id):
-    """Convenience method to look up the id for a username."""
-    rv = query_db('select username from user where user_id = ?',
-                  [user_id], one=True)
-    return rv[0] if rv else None
-
-
 def format_datetime(timestamp):
     """Format a timestamp for display."""
     return datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d @ %H:%M')
@@ -149,8 +97,7 @@ def gravatar_url(email, size=80):
 def before_request():
     g.user = None
     if 'user_id' in session:
-        g.user = query_db('select * from user where user_id = ?',
-                          [session['user_id']], one=True)
+        g.user = get_username(session['user_id'])
 
 @app.route('/')
 def timeline():
@@ -160,14 +107,18 @@ def timeline():
     """
     if not g.user:
         return redirect(url_for('public_timeline'))
-    return render_template('timeline.html', messages=query_db('''
-        select message.*, user.* from message, user
-        where message.author_id = user.user_id and (
-            user.user_id = ? or
-            user.user_id in (select whom_id from follower
-                                    where who_id = ?))
-        order by message.pub_date desc limit ?''',
-        [session['user_id'], session['user_id'], PER_PAGE]))
+    r = requests.get("http://localhost:5001/api/users/Daniel/timeline")
+    user_timeline = r.json()
+    message_list_items = user_timeline[g.user + "'s timeline"]
+    message_list = [0] * len(message_list_items)
+    for index, x in enumerate(message_list_items):
+        post = type('Post', (object,), {})()
+        post.text = x['text']
+        post.username = get_username(x['author_id'])
+        post.email = x['email']
+        post.pub_date = x['pub_date']
+        message_list[index] = post
+    return render_template('timeline.html', messages=message_list)
 
 @app.route('/public')
 def public_timeline():
