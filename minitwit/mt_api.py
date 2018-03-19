@@ -149,7 +149,7 @@ Just send a GET requuest to /api/public to get all of the public timeline back i
 @app.route('/api/public', methods = ['GET'])
 def get_public():
     messages=query_db_json('''
-        select message.*, user.username from message, user
+        select message.*, user.username, user.email from message, user
         where message.author_id = user.user_id
         order by message.pub_date desc limit ?''', 'public timeline', [PER_PAGE])
     return messages
@@ -168,7 +168,9 @@ def users_timeline(username):
     user_id = cursor.fetchone()
     if user_id == None:
         return jsonify({'status code' : '404'})
-    cursor.execute('''select * from message, user where author_id="''' + str(user_id[0]) + '''" and user_id = "''' + str(user_id[0]) + '''"''')
+    cursor.execute('''select * from message, user where author_id="''' +
+                   str(user_id[0]) + '''" and user_id = "''' +
+                   str(user_id[0]) + '''"''')
     r = [dict((cursor.description[i][0], value)
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({str(username) + '\'s timeline' : r})

@@ -91,6 +91,14 @@ def gravatar_url(email, size=80):
     return 'https://www.gravatar.com/avatar/%s?d=identicon&s=%d' % \
         (md5(email.strip().lower().encode('utf-8')).hexdigest(), size)
 
+def get_timeline_message(x):
+    post = type('Post', (object,), {})()
+    post.text = x['text']
+    post.username = get_username(x['author_id'])
+    post.email = x['email']
+    post.pub_date = x['pub_date']
+    return post
+
 #==============================================================================
 
 @app.before_request
@@ -107,26 +115,24 @@ def timeline():
     """
     if not g.user:
         return redirect(url_for('public_timeline'))
-    r = requests.get("http://localhost:5001/api/users/Daniel/timeline")
-    user_timeline = r.json()
-    message_list_items = user_timeline[g.user + "'s timeline"]
+    r = requests.get("http://localhost:5001/api/users/" + g.user + "/timeline")
+    user_timeline_messages = r.json()
+    message_list_items = user_timeline_messages[g.user + "'s timeline"]
     message_list = [0] * len(message_list_items)
     for index, x in enumerate(message_list_items):
-        post = type('Post', (object,), {})()
-        post.text = x['text']
-        post.username = get_username(x['author_id'])
-        post.email = x['email']
-        post.pub_date = x['pub_date']
-        message_list[index] = post
+        message_list[index] = get_timeline_message(x)
     return render_template('timeline.html', messages=message_list)
 
 @app.route('/public')
 def public_timeline():
     """Displays the latest messages of all users."""
-    return render_template('timeline.html', messages=query_db('''
-        select message.*, user.* from message, user
-        where message.author_id = user.user_id
-        order by message.pub_date desc limit ?''', [PER_PAGE]))
+    r = requests.get("http://localhost:5001/api/public")
+    public_timeline = r.json()
+    public_message_list = public_timeline["public timeline"]
+    public_messages = [0] * len(public_message_list)
+    for index, x in enumerate(public_message_list):
+        public_messages[index] = get_timeline_message(x)
+    return render_template('timeline.html', messages=public_messages)
 
 @app.route('/<username>')
 def user_timeline(username):
@@ -252,175 +258,6 @@ def logout():
     flash('You were logged out')
     session.pop('user_id', None)
     return redirect(url_for('public_timeline'))
-
-#testing API endpoints
-"""API Route for getting all users"""
-@app.route('/api/users', methods = ['GET'])
-def get_users():
-    cursor = get_db().cursor()
-    users = cursor.execute('''select * from user;''')
-    r = [dict((cursor.description[i][0], value)
-              for i, value in enumerate(row)) for row in cursor.fetchall()]
-    return jsonify({'users' : r})
-
-"""API Route for Public Timeline"""
-@app.route('/api/public', methods = ['GET'])
-def get_public():
-    messages=query_db_json('''
-        select message.*, user.username from message, user
-        where message.author_id = user.user_id
-        order by message.pub_date desc limit ?''', 'public timeline', [PER_PAGE])
-    return messages
-
-"""API Route for getting users timeline (All messages made by user)"""
-@app.route('/api/users/<username>/timeline', methods = ['GET'])
-def users_timeline(username):
-    if request.method != 'GET':
-        return jsonify({'status code' : '405'})
-    cursor = get_db().cursor()
-    cursor.execute('''select user_id from user where username="''' + str(username) + '''"''')
-    user_id = cursor.fetchone()
-    if user_id == None:
-        return jsonify({'status code' : '404'})
-    cursor.execute('''select * from message where author_id="''' + str(user_id[0]) + '''"''')
-    r = [dict((cursor.description[i][0], value)
-              for i, value in enumerate(row)) for row in cursor.fetchall()]
-    return jsonify({str(username) + '\'s timeline' : r})
-
-"""API Route for registering new user"""
-@app.route('/api/register', methods = ['POST'])
-def add_user():
-    cursor = get_db().cursor()
-    cursor.execute('''select user_id from user where username="''' + str(request.authorization["username"]) + '''"''')
-    user_id = cursor.fetchone()
-    email = request.form.get("email")
-    if user_id != None:
-        return jsonify({"message": "That username is already taken. Please try a different username."})
-    elif email == None:
-        return jsonify({"message": "There was no email for the user in the request body. Please add the user's email in the 'email' form in the request body"})
-    else:
-        db = get_db()
-        db.execute('insert into user (username, email, pw_hash) values (?, ?, ?)',
-            [request.authorization["username"], email, generate_password_hash(request.authorization["password"])])
-        db.commit()
-        m = "Success, user has been added."
-        return jsonify({"message" : m})
-
-
-
-"""API Route for getting users who username is followed by"""
-@app.route('/api/users/<username>/followers', methods = ['GET'])
-def get_followers(username):
-    cursor = get_db().cursor()
-    user_id = get_user_id(username)
-    if user_id is None:
-        return jsonify({"status code" : "404"})
-    cursor.execute('''select who_id from follower where whom_id="''' + str(user_id) + '''"''')
-    follower_ids = [dict((cursor.description[i][0], value)
-              for i, value in enumerate(row)) for row in cursor.fetchall()]
-    follower_names = []
-    for i in range(len(follower_ids)):
-        name = get_username(int(follower_ids[i].values()[0]))
-        follower_names.append(name)
-    return_dict = {}
-    for i in range(0, len(follower_names)):
-        return_dict[str(i + 1)] = follower_names[i]
-    return jsonify({"followers" : return_dict})
-
-"""API Route for getting users who username is following"""
-@app.route('/api/users/<username>/following', methods = ['GET'])
-def get_following(username):
-    cursor = get_db().cursor()
-    user_id = get_user_id(username)
-    if user_id is None:
-        return jsonify({"status code" : "404"})
-    cursor.execute('''select whom_id from follower where who_id="''' + str(user_id) + '''"''')
-    follower_ids = [dict((cursor.description[i][0], value)
-              for i, value in enumerate(row)) for row in cursor.fetchall()]
-    follower_names = []
-    for i in range(len(follower_ids)):
-        name = get_username(int(follower_ids[i].values()[0]))
-        follower_names.append(name)
-    return_dict = {}
-    for i in range(0, len(follower_names)):
-        return_dict[str(i + 1)] = follower_names[i]
-    return jsonify({"following" : return_dict})
-
-"""API Route for posting"""
-@app.route('/api/users/<username>/post', methods = ['POST'])
-@basic_auth.required
-def insert_message(username):
-    post_message = request.form.get("message")
-    if post_message == None:
-        return jsonify({"Error" : "There was no message in the request body. Please add what you would like to post under the 'message' form in the request body"})
-    if request.authorization["username"] == username:
-        db = get_db()
-        db.execute('insert into message (author_id, text, pub_date) values (?, ?, ?)',
-            [get_user_id(username), post_message, time.time()])
-        db.commit()
-        m = "Success, you've made a post."
-        return jsonify({"message" : m})
-    else:
-        return jsonify({"status code" : "403 Forbidden: You cannot post to a user that isn't you"})
-
-"""API route for getting a users Dashboard (Timeline of followed users)"""
-@app.route('/api/users/<username>/dashboard', methods = ['GET'])
-@basic_auth.required
-def get_dash(username):
-    if request.authorization["username"] == username:
-        messages = query_db_json('''
-            select message.*, user.username from message, user
-            where message.author_id = user.user_id and (
-                user.user_id = ? or
-                user.user_id in (select whom_id from follower
-                                    where who_id = ?))
-                order by message.pub_date desc limit ?''', 'dashboard',
-                [get_user_id(username), get_user_id(username), PER_PAGE])
-        return messages
-    else:
-        return jsonify({"status code" : "403 Forbidden: This dashboard doesn't belong to you"})
-
-"""Route for Api Follow"""
-@app.route('/api/users/<follower>/follow/<followee>', methods = ['POST'])
-@basic_auth.required
-def api_follow(follower, followee):
-    if request.authorization["username"] == follower:
-        if(get_user_id(follower) == get_user_id(followee)):
-            return jsonify({"Error" : "You can't follow yourself"})
-        followee_id = get_user_id(followee)
-        follower_id = get_user_id(follower)
-        if followee_id is None or follower_id is None:
-            return jsonify({"status code" : "404: User not found."})
-        db = get_db()
-        db.execute('insert into follower (who_id, whom_id) values (?, ?)',
-            [get_user_id(follower), get_user_id(followee)])
-        db.commit()
-        m = "Success, You are now following " + followee
-        return jsonify({"message" : m})
-    else:
-        return jsonify({"status code" : "403 Forbidden: You're trying to make someone who isn't you follow someone else."})
-
-"""Route for Api Unfollow"""
-@app.route('/api/users/<follower>/unfollow/<followee>', methods = ['DELETE'])
-@basic_auth.required
-def api_unfollow(follower, followee):
-    if request.authorization["username"] == follower:
-        if(get_user_id(follower) == get_user_id(followee)):
-            return jsonify({"Error" : "You can't unfollow yourself"})
-        followee_id = get_user_id(followee)
-        follower_id = get_user_id(follower)
-        if followee_id is None or follower_id is None:
-            return jsonify({"status code" : "404: User not found."})
-        db = get_db()
-        db.execute('delete from follower where who_id=? and whom_id=?',
-                  [followee_id, follower_id])
-        db.commit()
-        m = "Success, you unfollowed " + followee
-        return jsonify({"message" : m})
-    else:
-        return jsonify({"status code" : "403 Forbidden: You're trying to make someone who isn't you unfollow someone else."})
-
-
 
 # add some filters to jinja
 app.jinja_env.filters['datetimeformat'] = format_datetime
