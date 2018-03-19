@@ -41,6 +41,7 @@ SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
 
 # create our little application :)
 app = Flask('minitwit')
+#app.run(debug=True, use_debugger=False, use_reloader=False)
 basic_auth = MtAuth(app)
 app.config.from_object(__name__)
 app.config.from_envvar('MINITWIT_SETTINGS', silent=True)
@@ -116,10 +117,9 @@ def timeline():
     """
     if not g.user:
         return redirect(url_for('public_timeline'))
-    r = requests.get("http://localhost:5001/api/users/" +
-                     get_username(session['user_id']) + "/timeline")
+    r = requests.get("http://localhost:5001/api/users/" + g.user.username + "/timeline")
     user_timeline_messages = r.json()
-    message_list_items = user_timeline_messages[get_username(session['user_id']) + "'s timeline"]
+    message_list_items = user_timeline_messages[g.user.username + "'s timeline"]
     message_list = [0] * len(message_list_items)
     for index, x in enumerate(message_list_items):
         message_list[index] = get_timeline_message(x)
@@ -169,8 +169,8 @@ def follow_user(username):
     if whom_id is None:
         abort(404)
     r = requests.post("http://localhost:5001/api/users/" +
-                      get_username(session['user_id']) +
-                      "/follow/" + username, auth=(get_username(session['user_id']), session['pass']))
+                      g.user.username +
+                      "/follow/" + username, auth=(g.user.username, session['pass']))
     if 'Error' in r.json():
         flash(r.json()['Error'])
     else:
@@ -199,12 +199,16 @@ def add_message():
     if 'user_id' not in session:
         abort(401)
     if request.form['text']:
-        db = get_db()
-        db.execute('''insert into message (author_id, text, pub_date)
-          values (?, ?, ?)''', (session['user_id'], request.form['text'],
-                                int(time.time())))
-        db.commit()
-        flash('Your message was recorded')
+        message = request.form['text']
+        message_header = {'message' : message}
+        r = requests.post("http://localhost:5001/api/users/" + g.user.username +
+                          "/post", auth=(g.user.username, session['pass']), data=message_header)
+        if 'message' in r.json():
+            flash(r.json()['message'])
+        elif 'Error' in r.json():
+            flash(r.json()['Error'])
+        elif 'status code' in r.json():
+            return r.json()
     return redirect(url_for('timeline'))
 
 @app.route('/login', methods=['GET', 'POST'])

@@ -267,7 +267,9 @@ In the request body, put the desired text of the post under the "message" form.
 def insert_message(username):
     post_message = request.form.get("message")
     if post_message == None:
-        return jsonify({"Error" : "There was no message in the request body. Please add what you would like to post under the 'message' form in the request body"})
+        return jsonify({"Error" : "There was no message in the request body."
+                                  " Please add what you would like to post under"
+                                  " the 'message' form in the request body"})
     if request.authorization["username"] == username:
         db = get_db()
         db.execute('insert into message (author_id, text, pub_date) values (?, ?, ?)',
