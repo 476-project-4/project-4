@@ -128,6 +128,15 @@ def get_username(user_id):
                   [user_id], one=True)
     return rv[0] if rv else None
 
+def get_g_user():
+    row = query_db('select * from user where user_id = ?', [session['user_id']], one=True)
+    user = type('User', (object,), {})()
+    user.user_id = row[0]
+    user.username = row[1]
+    user.email = row[2]
+    user.pass_hash = row[3]
+    return user
+
 #===============================================================================
 #testing API endpoints
 """

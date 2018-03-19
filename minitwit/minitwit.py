@@ -20,7 +20,8 @@ from flask import Flask, request, session, url_for, redirect, \
      render_template, abort, g, flash, _app_ctx_stack, jsonify
 from werkzeug import check_password_hash, generate_password_hash
 from flask_basicauth import BasicAuth
-from mt_api import get_username, get_user_id, query_db, query_db_json, get_db, close_database
+from mt_api import get_username, get_user_id, query_db, \
+    query_db_json, get_db, close_database, get_g_user, restartdb_command
 
 class MtAuth(BasicAuth):
     def check_credentials(self, username, password):
@@ -105,9 +106,7 @@ def get_timeline_message(x):
 def before_request():
     g.user = None
     if 'user_id' in session:
-        g.user = get_username(session['user_id'])
-        g.user_id = session['user_id']
-        g.password = session['pass_hash']
+        g.user = get_g_user()
 
 @app.route('/')
 def timeline():
@@ -117,9 +116,10 @@ def timeline():
     """
     if not g.user:
         return redirect(url_for('public_timeline'))
-    r = requests.get("http://localhost:5001/api/users/" + g.user + "/timeline")
+    r = requests.get("http://localhost:5001/api/users/" +
+                     get_username(session['user_id']) + "/timeline")
     user_timeline_messages = r.json()
-    message_list_items = user_timeline_messages[g.user + "'s timeline"]
+    message_list_items = user_timeline_messages[get_username(session['user_id']) + "'s timeline"]
     message_list = [0] * len(message_list_items)
     for index, x in enumerate(message_list_items):
         message_list[index] = get_timeline_message(x)
@@ -129,8 +129,7 @@ def timeline():
 def public_timeline():
     """Displays the latest messages of all users."""
     r = requests.get("http://localhost:5001/api/public")
-    public_timeline = r.json()
-    public_message_list = public_timeline["public timeline"]
+    public_message_list = r.json()["public timeline"]
     public_messages = [0] * len(public_message_list)
     for index, x in enumerate(public_message_list):
         public_messages[index] = get_timeline_message(x)
@@ -145,16 +144,20 @@ def user_timeline(username):
         abort(404)
     followed = False
     if g.user:
-        followed = query_db('''select 1 from follower where
-            follower.who_id = ? and follower.whom_id = ?''',
-            [session['user_id'], profile_user['user_id']],
-            one=True) is not None
-    return render_template('timeline.html', messages=query_db('''
-            select message.*, user.* from message, user where
-            user.user_id = message.author_id and user.user_id = ?
-            order by message.pub_date desc limit ?''',
-            [profile_user['user_id'], PER_PAGE]), followed=followed,
-            profile_user=profile_user)
+        followed_request = requests.get("http://localhost:5001/api/users/" +
+                                        g.user.username + "/following")
+        for x in followed_request.json()["following"]:
+            if get_username(x) == username:
+                followed = True
+    r = requests.get("http://localhost:5001/api/users/" + username + "/timeline")
+    user_timeline_items = r.json()[str(username) + '\'s timeline']
+    user_messages = [0] * len(user_timeline_items)
+    if "status_code" in user_timeline_items:
+        return r.json()
+    for index, x in enumerate(user_timeline_items):
+        user_messages[index] = get_timeline_message(x)
+    return render_template('timeline.html', messages=user_messages,
+                           followed=followed, profile_user=profile_user)
 
 
 @app.route('/<username>/follow')
@@ -166,7 +169,8 @@ def follow_user(username):
     if whom_id is None:
         abort(404)
     r = requests.post("http://localhost:5001/api/users/" +
-                  g.user + "/follow/" + username, auth=(g.user, g.password))
+                      get_username(session['user_id']) +
+                      "/follow/" + username, auth=(get_username(session['user_id']), session['pass']))
     if 'Error' in r.json():
         flash(r.json()['Error'])
     else:
@@ -182,8 +186,8 @@ def unfollow_user(username):
     whom_id = get_user_id(username)
     if whom_id is None:
         abort(404)
-    r = requests.post("http://localhost:5001/api/users/" +
-                      g.user + "/unfollow/" + username, auth=(g.user, g.password))
+    r = requests.delete("http://localhost:5001/api/users/" + g.user.username +
+                      "/unfollow/" + username, auth=(g.user.username, session['pass']))
     if 'message' in r.json():
         flash(r.json()['message'])
     return redirect(url_for('user_timeline', username=username))
