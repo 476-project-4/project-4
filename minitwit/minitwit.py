@@ -106,6 +106,8 @@ def before_request():
     g.user = None
     if 'user_id' in session:
         g.user = get_username(session['user_id'])
+        g.user_id = session['user_id']
+        g.password = session['pass_hash']
 
 @app.route('/')
 def timeline():
@@ -163,11 +165,12 @@ def follow_user(username):
     whom_id = get_user_id(username)
     if whom_id is None:
         abort(404)
-    db = get_db()
-    db.execute('insert into follower (who_id, whom_id) values (?, ?)',
-              [session['user_id'], whom_id])
-    db.commit()
-    flash('You are now following "%s"' % username)
+    r = requests.post("http://localhost:5001/api/users/" +
+                  g.user + "/follow/" + username, auth=(g.user, g.password))
+    if 'Error' in r.json():
+        flash(r.json()['Error'])
+    else:
+        flash('You are now following "%s"' % username)
     return redirect(url_for('user_timeline', username=username))
 
 
@@ -179,11 +182,10 @@ def unfollow_user(username):
     whom_id = get_user_id(username)
     if whom_id is None:
         abort(404)
-    db = get_db()
-    db.execute('delete from follower where who_id=? and whom_id=?',
-              [session['user_id'], whom_id])
-    db.commit()
-    flash('You are no longer following "%s"' % username)
+    r = requests.post("http://localhost:5001/api/users/" +
+                      g.user + "/unfollow/" + username, auth=(g.user, g.password))
+    if 'message' in r.json():
+        flash(r.json()['message'])
     return redirect(url_for('user_timeline', username=username))
 
 
@@ -218,7 +220,9 @@ def login():
         else:
             flash('You were logged in')
             session['user_id'] = user['user_id']
+            session['pass'] = request.form['password']
             return redirect(url_for('timeline'))
+
     return render_template('login.html', error=error)
 
 
