@@ -210,7 +210,9 @@ def add_user():
         m = "Success, user has been added."
         return jsonify({"message" : m})
 
-
+@app.route('/api/users/<username>', methods = ['GET'])
+def get_user(username):
+    return query_db_json('''select * from user where username= ?''', 'user', [username])
 
 """
 API Route for getting users who username is followed by
@@ -290,7 +292,7 @@ Sending a GET request returns the dashboard for that user, which is all the mess
 def get_dash(username):
     if request.authorization["username"] == username:
         messages = query_db_json('''
-            select message.*, user.username from message, user
+            select message.*, user.* from message, user
             where message.author_id = user.user_id and (
                 user.user_id = ? or
                 user.user_id in (select whom_id from follower
@@ -348,7 +350,7 @@ def api_unfollow(follower, followee):
             return jsonify({"status code" : "404: User not found."})
         db = get_db()
         db.execute('delete from follower where who_id=? and whom_id=?',
-                  [followee_id, follower_id])
+                  [follower_id, followee_id])
         db.commit()
         m = "Success, you unfollowed " + followee
         return jsonify({"message" : m})

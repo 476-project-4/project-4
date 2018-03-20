@@ -23,18 +23,7 @@ from flask_basicauth import BasicAuth
 from mt_api import get_username, get_user_id, query_db, \
     query_db_json, get_db, close_database, get_g_user, restartdb_command
 
-class MtAuth(BasicAuth):
-    def check_credentials(self, username, password):
-        cursor = get_db().cursor()
-        cursor.execute('''select pw_hash from user where username="''' + str(username) + '''"''')
-        data = cursor.fetchone()
-        if data != None:
-            if check_password_hash(data[0], password):
-                return True
-        return False
-
 # configuration
-DATABASE = 'minitwit.db'
 PER_PAGE = 30
 DEBUG = True
 SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
@@ -42,46 +31,9 @@ SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
 # create our little application :)
 app = Flask('minitwit')
 #app.run(debug=True, use_debugger=False, use_reloader=False)
-basic_auth = MtAuth(app)
 app.config.from_object(__name__)
 app.config.from_envvar('MINITWIT_SETTINGS', silent=True)
 
-def init_db():
-    """Initializes the database."""
-    db = get_db()
-    with app.open_resource('schema.sql', mode='r') as f:
-        db.cursor().executescript(f.read())
-    db.commit()
-
-@app.cli.command('initdb')
-def initdb_command():
-    """Creates the database tables."""
-    init_db()
-    print('Initialized the database.')
-
-def pop_db():
-    """Populates the database"""
-    db = get_db()
-    user_inserts(db)
-    with app.open_resource('population.sql', mode='r') as otherf:
-        db.executescript(otherf.read())
-        db.commit()
-
-def user_inserts(db):
-    db.execute('''INSERT INTO user (username, email, pw_hash)
-    VALUES ("Daniel", "foo@bar.com", ?)''', [generate_password_hash('foobar')])
-    db.execute('''INSERT INTO user (username, email, pw_hash)
-    VALUES ("Sollis", "bar@foo.com", ?)''', [generate_password_hash('barfoo')])
-    db.execute('''INSERT INTO user (username, email, pw_hash)
-    VALUES ("Kaz", "foo@foo.com", ?)''', [generate_password_hash('foofoo')])
-    db.execute('''INSERT INTO user (username, email, pw_hash)
-    VALUES ("Antonio", "bar@bar.com", ?)''', [generate_password_hash('barbar')])
-
-@app.cli.command('popdb')
-def popdb_command():
-    """adds predefined users to database"""
-    pop_db()
-    print('Populating the Database.')
 
 def format_datetime(timestamp):
     """Format a timestamp for display."""
@@ -101,6 +53,12 @@ def get_timeline_message(x):
     post.pub_date = x['pub_date']
     return post
 
+def convert_user(x):
+    user = type('User', (object,), {})()
+    user.username = x['username']
+    user.email = x['email']
+    return user
+
 #==============================================================================
 
 @app.before_request
@@ -117,9 +75,9 @@ def timeline():
     """
     if not g.user:
         return redirect(url_for('public_timeline'))
-    r = requests.get("http://localhost:5001/api/users/" + g.user.username + "/timeline")
+    r = requests.get("http://localhost:5001/api/users/" + g.user.username + "/dashboard", auth=(g.user.username, session['pass']))
     user_timeline_messages = r.json()
-    message_list_items = user_timeline_messages[g.user.username + "'s timeline"]
+    message_list_items = user_timeline_messages['dashboard']
     message_list = [0] * len(message_list_items)
     for index, x in enumerate(message_list_items):
         message_list[index] = get_timeline_message(x)
@@ -138,9 +96,8 @@ def public_timeline():
 @app.route('/<username>')
 def user_timeline(username):
     """Display's a users tweets."""
-    profile_user = query_db('select * from user where username = ?',
-                            [username], one=True)
-    if profile_user is None:
+    profile_user = requests.get("http://localhost:5001/api/users/" + username).json()['user']
+    if not profile_user:
         abort(404)
     followed = False
     if g.user:
@@ -156,8 +113,11 @@ def user_timeline(username):
         return r.json()
     for index, x in enumerate(user_timeline_items):
         user_messages[index] = get_timeline_message(x)
+
+    user_messages.reverse()
+
     return render_template('timeline.html', messages=user_messages,
-                           followed=followed, profile_user=profile_user)
+                           followed=followed, profile_user=convert_user(profile_user[0]))
 
 
 @app.route('/<username>/follow')
@@ -165,8 +125,8 @@ def follow_user(username):
     """Adds the current user as follower of the given user."""
     if not g.user:
         abort(401)
-    whom_id = get_user_id(username)
-    if whom_id is None:
+    whom = requests.get("http://localhost:5001/api/users/" + username).json()['user']
+    if not whom:
         abort(404)
     r = requests.post("http://localhost:5001/api/users/" +
                       g.user.username +
@@ -218,22 +178,21 @@ def login():
         return redirect(url_for('timeline'))
     error = None
     if request.method == 'POST':
-        user = query_db('''select * from user where
-            username = ?''', [request.form['username']], one=True)
-        if user is None:
+        user = requests.get("http://localhost:5001/api/users/" + request.form['username']).json()['user']
+        if not user:
             error = 'Invalid username'
-        elif not check_password_hash(user['pw_hash'],
+        elif not check_password_hash(user[0]['pw_hash'],
                                      request.form['password']):
             error = 'Invalid password'
         else:
             flash('You were logged in')
-            session['user_id'] = user['user_id']
+            session['user_id'] = user[0]['user_id']
             session['pass'] = request.form['password']
             return redirect(url_for('timeline'))
 
     return render_template('login.html', error=error)
 
-
+#Need to do
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     """Registers the user."""
@@ -253,13 +212,9 @@ def register():
         elif get_user_id(request.form['username']) is not None:
             error = 'The username is already taken'
         else:
-            db = get_db()
-            db.execute('''insert into user (
-              username, email, pw_hash) values (?, ?, ?)''',
-              [request.form['username'], request.form['email'],
-               generate_password_hash(request.form['password'])])
-            db.commit()
-            flash('You were successfully registered and can login now')
+            email_header = {'email' : request.form['email']}
+            response = requests.post("http://localhost:5001/api/register", auth=(request.form['username'], request.form['password']), data=email_header).json()
+            flash(response['message'])
             return redirect(url_for('login'))
     return render_template('register.html', error=error)
 
