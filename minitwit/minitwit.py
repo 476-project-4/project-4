@@ -27,6 +27,7 @@ from mt_api import get_username, get_user_id, query_db, \
 PER_PAGE = 30
 DEBUG = True
 SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
+API_BASE_URL = "http://localhost:8080"
 
 # create our little application :)
 app = Flask('minitwit')
@@ -75,7 +76,7 @@ def timeline():
     """
     if not g.user:
         return redirect(url_for('public_timeline'))
-    r = requests.get("http://localhost:5001/api/users/" + g.user.username + "/dashboard", auth=(g.user.username, session['pass']))
+    r = requests.get(API_BASE_URL + "/api/users/" + g.user.username + "/dashboard", auth=(g.user.username, session['pass']))
     user_timeline_messages = r.json()
     message_list_items = user_timeline_messages['dashboard']
     message_list = [0] * len(message_list_items)
@@ -86,7 +87,7 @@ def timeline():
 @app.route('/public')
 def public_timeline():
     """Displays the latest messages of all users."""
-    r = requests.get("http://localhost:5001/api/public")
+    r = requests.get(API_BASE_URL + "/api/public")
     public_message_list = r.json()["public timeline"]
     public_messages = [0] * len(public_message_list)
     for index, x in enumerate(public_message_list):
@@ -96,17 +97,17 @@ def public_timeline():
 @app.route('/<username>')
 def user_timeline(username):
     """Display's a users tweets."""
-    profile_user = requests.get("http://localhost:5001/api/users/" + username).json()['user']
+    profile_user = requests.get(API_BASE_URL + "/api/users/" + username).json()['user']
     if not profile_user:
         abort(404)
     followed = False
     if g.user:
-        followed_request = requests.get("http://localhost:5001/api/users/" +
+        followed_request = requests.get(API_BASE_URL + "/api/users/" +
                                         g.user.username + "/following")
         for x in followed_request.json()["following"]:
             if get_username(x) == username:
                 followed = True
-    r = requests.get("http://localhost:5001/api/users/" + username + "/timeline")
+    r = requests.get(API_BASE_URL + "/api/users/" + username + "/timeline")
     user_timeline_items = r.json()[str(username) + '\'s timeline']
     user_messages = [0] * len(user_timeline_items)
     if "status_code" in user_timeline_items:
@@ -125,10 +126,10 @@ def follow_user(username):
     """Adds the current user as follower of the given user."""
     if not g.user:
         abort(401)
-    whom = requests.get("http://localhost:5001/api/users/" + username).json()['user']
+    whom = requests.get(API_BASE_URL + "/api/users/" + username).json()['user']
     if not whom:
         abort(404)
-    r = requests.post("http://localhost:5001/api/users/" +
+    r = requests.post(API_BASE_URL + "/api/users/" +
                       g.user.username +
                       "/follow/" + username, auth=(g.user.username, session['pass']))
     if 'Error' in r.json():
@@ -146,7 +147,7 @@ def unfollow_user(username):
     whom_id = get_user_id(username)
     if whom_id is None:
         abort(404)
-    r = requests.delete("http://localhost:5001/api/users/" + g.user.username +
+    r = requests.delete(API_BASE_URL + "/api/users/" + g.user.username +
                       "/unfollow/" + username, auth=(g.user.username, session['pass']))
     if 'message' in r.json():
         flash(r.json()['message'])
@@ -161,7 +162,7 @@ def add_message():
     if request.form['text']:
         message = request.form['text']
         message_header = {'message' : message}
-        r = requests.post("http://localhost:5001/api/users/" + g.user.username +
+        r = requests.post(API_BASE_URL + "/api/users/" + g.user.username +
                           "/post", auth=(g.user.username, session['pass']), data=message_header)
         if 'message' in r.json():
             flash(r.json()['message'])
@@ -178,7 +179,7 @@ def login():
         return redirect(url_for('timeline'))
     error = None
     if request.method == 'POST':
-        user = requests.get("http://localhost:5001/api/users/" + request.form['username']).json()['user']
+        user = requests.get(API_BASE_URL + "/api/users/" + request.form['username']).json()['user']
         if not user:
             error = 'Invalid username'
         elif not check_password_hash(user[0]['pw_hash'],
@@ -213,7 +214,7 @@ def register():
             error = 'The username is already taken'
         else:
             email_header = {'email' : request.form['email']}
-            response = requests.post("http://localhost:5001/api/register", auth=(request.form['username'], request.form['password']), data=email_header).json()
+            response = requests.post(API_BASE_URL + "/api/register", auth=(request.form['username'], request.form['password']), data=email_header).json()
             flash(response['message'])
             return redirect(url_for('login'))
     return render_template('register.html', error=error)

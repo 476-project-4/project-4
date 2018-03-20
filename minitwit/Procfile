@@ -1,0 +1,6 @@
+minitwit1: ./minitwit.sh 5000
+minitwit2: ./minitwit.sh 5001
+minitwit3: ./minitwit.sh 5002
+mt_api1: ./mt_api.sh 5003
+mt_api2: ./mt_api.sh 5004
+mt_api3: ./mt_api.sh 5005
