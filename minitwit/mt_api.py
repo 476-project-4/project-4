@@ -15,6 +15,7 @@ from flask import Flask, request, session, url_for, redirect, \
      render_template, abort, g, flash, _app_ctx_stack, jsonify
 from werkzeug import check_password_hash, generate_password_hash
 from flask_basicauth import BasicAuth
+from uuid import UUID, uuid1
 
 class MtAuth(BasicAuth):
     def check_credentials(self, username, password):
@@ -27,7 +28,10 @@ class MtAuth(BasicAuth):
         return False
 
 # configuration
-DATABASE = 'minitwit.db'
+SERVER_1 = 'server_1.db'
+SERVER_2 = 'server_2.db'
+SERVER_3 = 'server_3.db'
+USERNAME_SERVER = 'username_server'
 PER_PAGE = 30
 DEBUG = True
 SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
@@ -44,62 +48,151 @@ def get_db():
     current application context.
     """
     top = _app_ctx_stack.top
-    if not hasattr(top, 'sqlite_db'):
-        top.sqlite_db = sqlite3.connect(app.config['DATABASE'])
+    db_array = [None] * 3
+    for i in range (0, 3):
+        top.sqlite_db = sqlite3.connect(app.config['SERVER_' + str(i + 1)])
         top.sqlite_db.row_factory = sqlite3.Row
-    return top.sqlite_db
+        db_array[i] = top.sqlite_db
+    return db_array
 
 
-@app.teardown_appcontext
-def close_database(exception):
+def close_databases(db_array):
     """Closes the database again at the end of the request."""
-    top = _app_ctx_stack.top
-    if hasattr(top, 'sqlite_db'):
-        top.sqlite_db.close()
-
+    for db in db_array:
+        db.close()
 
 def init_db():
     """Initializes the database."""
-    db = get_db()
-    with app.open_resource('schema.sql', mode='r') as f:
-        db.cursor().executescript(f.read())
+    db_array = get_db()
+    for i in range (0, 3):
+        db = db_array[i]
+        with app.open_resource('schema.sql', mode='r') as f:
+            db.cursor().executescript(f.read())
+        db.commit()
+    close_databases(db_array)
+
+def get_username_db():
+    top = _app_ctx_stack.top
+    top.sqlite_db = sqlite3.connect(app.config['USERNAME_SERVER'])
+    top.sqlite_db.row_factory = sqlite3.Row
+    return top.sqlite_db
+
+def init_username_db():
+    db = get_username_db()
+    db.execute('''DROP TABLE IF EXISTS id;''')
+    db.execute('''CREATE TABLE id(
+    username text PRIMARY KEY,
+    user_id blob NOT NULL);''')
     db.commit()
+    db.close()
+
 
 @app.cli.command('initdb')
 def initdb_command():
     """Creates the database tables."""
     init_db()
-    print('Initialized the database.')
+    init_username_db()
+    print('Database Initialized.')
+
 
 def pop_db():
     """Populates the database"""
-    db = get_db()
-    user_inserts(db)
-    with app.open_resource('population.sql', mode='r') as otherf:
-        db.executescript(otherf.read())
+    db_array = get_db()
+    user_inserts(db_array)
+    message_inserts(db_array)
+    follower_inserts(db_array)
+    for db in db_array:
         db.commit()
+    close_databases(db_array)
 
-def user_inserts(db):
-    db.execute('''INSERT INTO user (username, email, pw_hash)
-    VALUES ("Daniel", "foo@bar.com", ?)''', [generate_password_hash('foobar')])
-    db.execute('''INSERT INTO user (username, email, pw_hash)
-    VALUES ("Sollis", "bar@foo.com", ?)''', [generate_password_hash('barfoo')])
-    db.execute('''INSERT INTO user (username, email, pw_hash)
-    VALUES ("Kaz", "foo@foo.com", ?)''', [generate_password_hash('foofoo')])
-    db.execute('''INSERT INTO user (username, email, pw_hash)
-    VALUES ("Antonio", "bar@bar.com", ?)''', [generate_password_hash('barbar')])
+
+def user_inserts(db_array):
+    insert_user(db_array, "Daniel", "foo@bar.com", "foobar")
+    insert_user(db_array, "Sollis", "bar@foo.com", "barfoo")
+    insert_user(db_array, "Kaz", "foo@foo.com", "foofoo")
+    insert_user(db_array, "Antonio", "bar@bar.com", "barbar")
+
+
+def message_inserts(db_array):
+    populate_message(db_array, "Daniel", "I", 6)
+    populate_message(db_array, "Daniel", "CAN", 5)
+    populate_message(db_array, "Kaz", "CODE", 4)
+    populate_message(db_array, "Daniel", "I'M", 3)
+    populate_message(db_array, "Sollis", "Not a", 2)
+    populate_message(db_array, "Daniel", "Moron", 1)
+    populate_message(db_array, "Sollis", "Oy", 0)
+    populate_message(db_array, "Daniel", "Yo", 0)
+
+
+def follower_inserts(db_array):
+    insert_followers(db_array, "Daniel", "Kaz")
+    insert_followers(db_array, "Kaz", "Daniel")
+    insert_followers(db_array, "Sollis", "Antonio")
+    insert_followers(db_array, "Antonio", "Daniel")
+
+
+def insert_user(db_array, username, email, pw):
+    user_id = uuid1().int
+    shard_server = user_id % 3
+    user_id_db = get_username_db()
+    user_id_db.execute('''INSERT INTO id (user_id, username) VALUES (''' + str(user_id) + ''', "''' + username + '''")''')
+    db_array[shard_server].execute('''INSERT INTO user (user_id, username, email, pw_hash)
+        VALUES (''' + str(user_id) + ''', "''' + username + ''''", "''' + email + '''", ?)''', [generate_password_hash(pw)])
+    user_id_db.commit()
+    user_id_db.close()
+
+
+def populate_message(db_array, username, text, pub_date):
+    user_id = get_user_id(username)
+    message_id = uuid1().int
+    shard_server = int(user_id) % 3
+    db_array[shard_server].execute('''INSERT INTO message (author_id, message_id, text, pub_date)
+        VALUES("''' + str(user_id) + '''" , "''' + str(message_id) + '''", "''' + text + '''", "''' + str(pub_date) + '''")''')
+
+def insert_followers(db_array, username, follower):
+    user_id = get_user_id(username)
+    follower_id = get_user_id(follower)
+    shard_server = int(user_id) % 3
+    db_array[shard_server].execute('''INSERT INTO follower (who_id, whom_id) 
+        VALUES ("''' + str(user_id) + '''", "''' + str(follower_id) + '''")''')
+
 
 @app.cli.command('popdb')
 def popdb_command():
     """adds predefined users to database"""
     pop_db()
-    print('Populating the Database.')
+    print('Database Populated.')
 
-@app.cli.command('restartdb')
+
+@app.cli.command('newdb')
 def restartdb_command():
-    initdb()
-    popdb()
-    print('Remaking the Database.')
+    init_db()
+    init_username_db()
+    pop_db()
+    print('Database Remade.')
+
+
+def get_user_id(username):
+    """Convenience method to look up the id for a username."""
+    db = get_username_db()
+    result = db.execute('''SELECT user_id FROM id WHERE username="''' + username + '''";''')
+    return result.fetchone()[0]
+
+
+def get_username(user_id):
+    """Convenience method to look up the id for a username."""
+    db = get_username_db()
+    result = db.execute('''SELECT username FROM id WHERE user_id="''' + str(user_id) + '''";''')
+    return result.fetchone()[0]
+
+def get_g_user():
+    row = query_db('select * from user where user_id = ?', [session['user_id']], one=True)
+    user = type('User', (object,), {})()
+    user.user_id = row[0]
+    user.username = row[1]
+    user.email = row[2]
+    user.pass_hash = row[3]
+    return user
 
 def query_db(query, args=(), one=False):
     """Queries the database and returns a list of dictionaries."""
@@ -115,34 +208,14 @@ def query_db_json(query, desc, args=(), one=False):
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({desc : r})
 
-
-def get_user_id(username):
-    """Convenience method to look up the id for a username."""
-    rv = query_db('select user_id from user where username = ?',
-                  [username], one=True)
-    return rv[0] if rv else None
-
-def get_username(user_id):
-    """Convenience method to look up the id for a username."""
-    rv = query_db('select username from user where user_id = ?',
-                  [user_id], one=True)
-    return rv[0] if rv else None
-
-def get_g_user():
-    row = query_db('select * from user where user_id = ?', [session['user_id']], one=True)
-    user = type('User', (object,), {})()
-    user.user_id = row[0]
-    user.username = row[1]
-    user.email = row[2]
-    user.pass_hash = row[3]
-    return user
-
 #===============================================================================
 #testing API endpoints
 """
 API Route for getting all users
 Just send a GET request to /api/users to get all users back in a json.
 """
+
+
 @app.route('/api/users', methods = ['GET'])
 def get_users():
     cursor = get_db().cursor()
@@ -150,6 +223,7 @@ def get_users():
     r = [dict((cursor.description[i][0], value)
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     return jsonify({'users' : r})
+
 
 """
 API Route for Public Timeline
@@ -168,6 +242,7 @@ API Route for getting users timeline (All messages made by user)
 Send a GET request to "/api/users/<username>/timeline" (replacing <username> with desired username)
 to get back all of that users posts in a json.
 """
+
 @app.route('/api/users/<username>/timeline', methods = ['GET'])
 def users_timeline(username):
     if request.method != 'GET':
