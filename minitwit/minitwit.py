@@ -21,7 +21,7 @@ from flask import Flask, request, session, url_for, redirect, \
 from werkzeug import check_password_hash, generate_password_hash
 from flask_basicauth import BasicAuth
 from mt_api import get_username, get_user_id, query_db, \
-    query_db_json, get_db, close_database, get_g_user, restartdb_command
+    query_db_json, get_db, close_databases, get_g_user, restartdb_command
 
 # configuration
 PER_PAGE = 30
