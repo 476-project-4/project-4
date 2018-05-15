@@ -291,10 +291,20 @@ def add_user():
         insert_user(db, str(request.authorization["username"]), str(email), str(request.authorization["password"]))
         m = "Success, user has been added."
         return jsonify({"message" : m})
-#
-# @app.route('/api/users/<username>', methods = ['GET'])
-# def get_user(username):
-#     return query_db_json('''select * from user where username= ?''', 'user', [username])
+
+#DONE
+@app.route('/api/users/<username>', methods = ['GET'])
+def get_user(username):
+    db_array = get_db()
+    results = []
+    shard_server = int(get_user_id(username)) % 3
+    user_rows = db_array[shard_server].execute('''SELECT * FROM user where username=?''', (username,))
+    if user_rows is not None:
+        for row in user_rows:
+            key = user_rows.description
+            results.append({key[0][0]: row[0], key[1][0]: row[1], key[2][0]: row[2], key[3][0]: row[3]})
+    return jsonify({'user': results})
+
 #
 # """
 # API Route for getting users who username is followed by
