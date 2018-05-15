@@ -12,10 +12,13 @@ from werkzeug import check_password_hash, generate_password_hash
 from flask_basicauth import BasicAuth
 from uuid import UUID, uuid4
 
+sqlite3.register_converter('GUID', lambda b: UUID(bytes_le=b))
+sqlite3.register_adapter(UUID, lambda u: buffer(u.bytes_le))
 
 class MtAuth(BasicAuth):
     def check_credentials(self, username, password):
-        cursor = get_db().cursor()
+        shard_server = int(get_user_id(username)) % 3
+        cursor = get_db()[shard_server].cursor()
         cursor.execute('''select pw_hash from user where username="''' + str(username) + '''"''')
         data = cursor.fetchone()
         if data is not None:
@@ -28,7 +31,7 @@ class MtAuth(BasicAuth):
 SERVER_1 = 'server_1.db'
 SERVER_2 = 'server_2.db'
 SERVER_3 = 'server_3.db'
-USERNAME_SERVER = 'username_server'
+USERNAME_SERVER = 'username_server.db'
 PER_PAGE = 30
 DEBUG = True
 SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
@@ -113,6 +116,7 @@ def user_inserts(db_array):
     insert_user(db_array, "Sollis", "bar@foo.com", "barfoo")
     insert_user(db_array, "Kaz", "foo@foo.com", "foofoo")
     insert_user(db_array, "Antonio", "bar@bar.com", "barbar")
+    insert_user(db_array, "slut", "test@bar.com", "barbar")
 
 
 def message_inserts(db_array):
@@ -137,11 +141,12 @@ def insert_user(db_array, username, email, pw):
     user_id = uuid4()
     shard_server = int(user_id) % 3
     user_id_db = get_username_db()
-    user_id_db.execute('''INSERT INTO id (user_id, username) 
+    user_id_db.execute('''INSERT INTO id (user_id, username)
       VALUES (?, "''' + username + '''")''', (user_id, ))
     db_array[shard_server].execute('''INSERT INTO user (user_id, username, email, pw_hash)
       VALUES (?, "''' + username + ''''", "''' + email + '''", "''' +
         str(generate_password_hash(pw)) + '''")''', (user_id, ))
+    db_array[shard_server].commit()
     user_id_db.commit()
     user_id_db.close()
 
@@ -158,7 +163,7 @@ def insert_followers(db_array, username, follower):
     user_id = get_user_id(username)
     follower_id = get_user_id(follower)
     shard_server = int(user_id) % 3
-    db_array[shard_server].execute('''INSERT INTO follower (who_id, whom_id) 
+    db_array[shard_server].execute('''INSERT INTO follower (who_id, whom_id)
       VALUES (?, ?)''', (user_id, follower_id))
 
 
@@ -194,31 +199,6 @@ def get_username(user_id):
     return username
 
 
-# def get_g_user():
-#     row = query_db('select * from user where user_id = ?', [session['user_id']], one=True)
-#     user = type('User', (object,), {})()
-#     user.user_id = row[0]
-#     user.username = row[1]
-#     user.email = row[2]
-#     user.pass_hash = row[3]
-#     return user
-#
-#
-# def query_db(query, args=(), one=False):
-#     """Queries the database and returns a list of dictionaries."""
-#     cur = get_db().execute(query, args)
-#     rv = cur.fetchall()
-#     return (rv[0] if rv else None) if one else rv
-#
-#
-# def query_db_json(query, desc, args=(), one=False):
-#     """Queries the database and returns a json"""
-#     cursor = get_db().cursor()
-#     cursor.execute(query, args)
-#     r = [dict((cursor.description[i][0], value)
-#               for i, value in enumerate(row)) for row in cursor.fetchall()]
-#     return jsonify({desc : r})
-#
 # ===============================================================================
 # testing API endpoints
 
@@ -240,19 +220,27 @@ def get_users():
                 key = user_rows.description
                 results.append({key[0][0]: row[0], key[1][0]: row[1], key[2][0]: row[2], key[3][0]: row[3]})
     sorted_results = sorted(results, key=lambda k: k['user_id'])
-    return jsonify({'Users': sorted_results})
+    return jsonify({'Users': results})
 
 """
 API Route for Public Timeline
 Just send a GET request to /api/public to get all of the public timeline back in a json.
 """
-# @app.route('/api/public', methods = ['GET'])
-# def get_public():
-#     messages=query_db_json('''
-#         select message.*, user.username, user.email from message, user
-#         where message.author_id = user.user_id
-#         order by message.pub_date desc limit ?''', 'public timeline', [PER_PAGE])
-#     return messages
+@app.route('/api/public', methods = ['GET'])
+def get_public():
+    db_array = get_db()
+    results = []
+    for db in db_array:
+        user_rows = db.execute('''
+             select message.*, user.username, user.email from message, user
+             where message.author_id = user.user_id
+             order by message.pub_date desc limit ?''', [PER_PAGE])
+        if user_rows is not None:
+            for row in user_rows:
+                key = user_rows.description
+                results.append({key[0][0]: row[0], key[1][0]: row[1], key[2][0]: row[2], key[3][0]: row[3], key[4][0]: row[4], key[5][0]: row[5]})
+    sorted_results = sorted(results, key=lambda k: k['pub_date'])
+    return jsonify({'public timeline': sorted_results})
 
 """
 API Route for getting users timeline (All messages made by user)
@@ -266,20 +254,19 @@ def users_timeline(username):
     user_id = get_user_id(username)
     messages = []
     shard_server = int(user_id) % 3
-    email_query = db_array[shard_server].execute('''SELECT * FROM user WHERE user_id =''' + str(user_id))
-    # if request.method != 'GET':
-    #     return jsonify({'status code' : '405'})
-    # cursor = get_db().cursor()
-    # cursor.execute('''select user_id from user where username="''' + str(username) + '''"''')
-    # user_id = cursor.fetchone()
-    # if user_id == None:
-    #     return jsonify({'status code' : '404'})
-    # cursor.execute('''select * from message, user where author_id="''' +
-    #                str(user_id[0]) + '''" and user_id = "''' +
-    #                str(user_id[0]) + '''"''')
-    # r = [dict((cursor.description[i][0], value)
-    #           for i, value in enumerate(row)) for row in cursor.fetchall()]
-    # return jsonify({str(username) + '\'s timeline' : r})
+    info_query = db_array[shard_server].execute('''select email, user_id from user where username=?''', (username,))
+    for row in info_query:
+        email = row[0]
+        user_id = row[1]
+    message_rows = db_array[shard_server].execute('''
+         select * from message where author_id=?''', (user_id,))
+    results = []
+    if message_rows is not None:
+        for row in message_rows:
+            key = message_rows.description
+            results.append({key[0][0]: row[0], key[1][0]: row[1], key[2][0]: row[2], key[3][0]: row[3], 'email': email})
+    sorted_results = sorted(results, key=lambda k: k['pub_date'])
+    return jsonify({username + '\'s timeline': sorted_results})
 
 """
 API Route for registering new user
@@ -289,24 +276,22 @@ This route doesn't actually require authentication, but still uses those fields.
 The username and password should be put into the authorization form of the request, using Basic Authentication.
 The email of the user should be put into the request body under the key "email"
 """
-# @app.route('/api/register', methods = ['POST'])
-# def add_user():
-#     cursor = get_db().cursor()
-#     cursor.execute('''select user_id from user where username="''' + str(request.authorization["username"]) + '''"''')
-#     user_id = cursor.fetchone()
-#     email = request.form.get("email")
-#     if user_id != None:
-#         return jsonify({"message": "That username is already taken. Please try a different username."})
-#     elif email == None:
-#         return jsonify({"message": "There was no email for the user in the request body. Please add the user's \
-#          email in the 'email' form in the request body"})
-#     else:
-#         db = get_db()
-#         db.execute('insert into user (username, email, pw_hash) values (?, ?, ?)',
-#             [request.authorization["username"], email, generate_password_hash(request.authorization["password"])])
-#         db.commit()
-#         m = "Success, user has been added."
-#         return jsonify({"message" : m})
+@app.route('/api/register', methods = ['POST'])
+def add_user():
+    cursor = get_username_db().cursor()
+    cursor.execute('''select user_id from id where username="''' + str(request.authorization["username"]) + '''"''')
+    user_id = cursor.fetchone()
+    email = request.form.get("email")
+    if user_id != None:
+        return jsonify({"message": "That username is already taken. Please try a different username."})
+    elif email == None:
+        return jsonify({"message": "There was no email for the user in the request body. Please add the user's \
+         email in the 'email' form in the request body"})
+    else:
+        db = get_db()
+        insert_user(db, str(request.authorization["username"]), str(email), str(request.authorization["password"]))
+        m = "Success, user has been added."
+        return jsonify({"message" : m})
 #
 # @app.route('/api/users/<username>', methods = ['GET'])
 # def get_user(username):
@@ -345,7 +330,7 @@ The email of the user should be put into the request body under the key "email"
 #     user_id = get_user_id(username)
 #     if user_id is None:
 #         return jsonify({"status code" : "404"})
-#     cursor.execute('''select whom_id from follower where who_id="''' + str(user_id) + '''"''')
+#     cursor.execute('''select whom_id from follower where who_id="''' def insert_user(db_array, username, email, pw)
 #     follower_ids = [dict((cursor.description[i][0], value)
 #               for i, value in enumerate(row)) for row in cursor.fetchall()]
 #     follower_names = []
