@@ -157,6 +157,7 @@ def populate_message(db_array, username, text, pub_date):
     shard_server = int(user_id) % 3
     db_array[shard_server].execute('''INSERT INTO message (author_id, message_id, text, pub_date)
       VALUES(?, ?, "''' + text + '''", "''' + str(pub_date) + '''")''', (user_id, message_id))
+    db_array[shard_server].commit()
 
 
 def insert_followers(db_array, username, follower):
