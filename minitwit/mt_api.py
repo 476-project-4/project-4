@@ -144,7 +144,7 @@ def insert_user(db_array, username, email, pw):
     user_id_db.execute('''INSERT INTO id (user_id, username)
       VALUES (?, "''' + username + '''")''', (user_id, ))
     db_array[shard_server].execute('''INSERT INTO user (user_id, username, email, pw_hash)
-      VALUES (?, "''' + username + ''''", "''' + email + '''", "''' +
+      VALUES (?, "''' + username + '''", "''' + email + '''", "''' +
         str(generate_password_hash(pw)) + '''")''', (user_id, ))
     db_array[shard_server].commit()
     user_id_db.commit()
@@ -208,7 +208,7 @@ API Route for getting all users
 Just send a GET request to /api/users to get all users back in a json.
 """
 
-
+#DONE
 @app.route('/api/users', methods=['GET'])
 def get_users():
     db_array = get_db()
@@ -222,6 +222,7 @@ def get_users():
     sorted_results = sorted(results, key=lambda k: k['user_id'])
     return jsonify({'Users': results})
 
+#DONE
 """
 API Route for Public Timeline
 Just send a GET request to /api/public to get all of the public timeline back in a json.
@@ -247,17 +248,14 @@ API Route for getting users timeline (All messages made by user)
 Send a GET request to "/api/users/<username>/timeline" (replacing <username> with desired username)
 to get back all of that users posts in a json.
 """
-
+#DONE
 @app.route('/api/users/<username>/timeline', methods = ['GET'])
 def users_timeline(username):
     db_array = get_db()
     user_id = get_user_id(username)
-    messages = []
     shard_server = int(user_id) % 3
-    info_query = db_array[shard_server].execute('''select email, user_id from user where username=?''', (username,))
-    for row in info_query:
-        email = row[0]
-        user_id = row[1]
+    info_query = db_array[shard_server].execute('''select email from user where username=?''', (username,))
+    email = info_query.fetchone()[0]
     message_rows = db_array[shard_server].execute('''
          select * from message where author_id=?''', (user_id,))
     results = []
@@ -276,6 +274,7 @@ This route doesn't actually require authentication, but still uses those fields.
 The username and password should be put into the authorization form of the request, using Basic Authentication.
 The email of the user should be put into the request body under the key "email"
 """
+#DONE
 @app.route('/api/register', methods = ['POST'])
 def add_user():
     cursor = get_username_db().cursor()
