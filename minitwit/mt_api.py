@@ -220,7 +220,7 @@ def get_users():
             for row in user_rows:
                 key = user_rows.description
                 results.append({key[0][0]: row[0], key[1][0]: row[1], key[2][0]: row[2], key[3][0]: row[3]})
-    sorted_results = sorted(results, key=lambda k: k['user_id'])
+    results = sorted(results, key=lambda k: k['user_id'])
     return jsonify({'Users': results})
 
 #DONE
@@ -373,78 +373,88 @@ def insert_message(username):
     else:
         return jsonify({"status code" : "403 Forbidden: You cannot post to a user that isn't you"})
 
-# """
-# API route for getting a users Dashboard (Timeline of followed users)
-# This route requires authentication, the fields must be filled out accordingly in the request.
-# Sending a GET request returns the dashboard for that user, which is all the messages of all the
-# users that the authenticated user follows.
-# """
-# @app.route('/api/users/<username>/dashboard', methods = ['GET'])
-# @basic_auth.required
-# def get_dash(username):
-#     if request.authorization["username"] == username:
-#         messages = query_db_json('''
-#             select message.*, user.* from message, user
-#             where message.author_id = user.user_id and (
-#                 user.user_id = ? or
-#                 user.user_id in (select whom_id from follower
-#                                     where who_id = ?))
-#                 order by message.pub_date desc limit ?''', 'dashboard',
-#                 [get_user_id(username), get_user_id(username), PER_PAGE])
-#         return messages
-#     else:
-#         return jsonify({"status code" : "403 Forbidden: This dashboard doesn't belong to you"})
-#
-# """
-# Route for Api Follow
-# This route requires authentication, the fields must be filled out accordingly in the request.
-# Sending an authenticated POST request to this endpoint makes the follower user follow the followee user.
-# Ex.
-# /api/users/Daniel/follow/Kaz
-# With authenticated Daniel login would make the user Daniel follow the user Kaz
-# """
-# @app.route('/api/users/<follower>/follow/<followee>', methods = ['POST'])
-# @basic_auth.required
-# def api_follow(follower, followee):
-#     if request.authorization["username"] == follower:
-#         if(get_user_id(follower) == get_user_id(followee)):
-#             return jsonify({"Error" : "You can't follow yourself"})
-#         followee_id = get_user_id(followee)
-#         follower_id = get_user_id(follower)
-#         if followee_id is None or follower_id is None:
-#             return jsonify({"status code" : "404: User not found."})
-#         db = get_db()
-#         db.execute('insert into follower (who_id, whom_id) values (?, ?)',
-#             [get_user_id(follower), get_user_id(followee)])
-#         db.commit()
-#         m = "Success, You are now following " + followee
-#         return jsonify({"message" : m})
-#     else:
-#         return jsonify({"status code" : "403 Forbidden: You're trying to make someone who isn't you follow someone else."})
-#
-# """
-# Route for Api Unfollow
-# This route requires authentication, the fields must be filled out accordingly in the request.
-# Sending an authenticated DELETE request to this endpoint makes the follower user unfollow the followee user.
-# Ex.
-# /api/users/Daniel/follow/Kaz
-# With authenticated Daniel login would make the user Daniel unfollow the user Kaz
-# """
-# @app.route('/api/users/<follower>/unfollow/<followee>', methods = ['DELETE'])
-# @basic_auth.required
-# def api_unfollow(follower, followee):
-#     if request.authorization["username"] == follower:
-#         if(get_user_id(follower) == get_user_id(followee)):
-#             return jsonify({"Error" : "You can't unfollow yourself"})
-#         followee_id = get_user_id(followee)
-#         follower_id = get_user_id(follower)
-#         if followee_id is None or follower_id is None:
-#             return jsonify({"status code" : "404: User not found."})
-#         db = get_db()
-#         db.execute('delete from follower where who_id=? and whom_id=?',
-#                   [follower_id, followee_id])
-#         db.commit()
-#         m = "Success, you unfollowed " + followee
-#         return jsonify({"message" : m})
-#     else:
-#         return jsonify({"status code" : "403 Forbidden: You're trying to make someone who isn't you unfollow someone else."})
+"""
+API route for getting a users Dashboard (Timeline of followed users)
+This route requires authentication, the fields must be filled out accordingly in the request.
+Sending a GET request returns the dashboard for that user, which is all the messages of all the
+users that the authenticated user follows.
+"""
+@app.route('/api/users/<username>/dashboard', methods = ['GET'])
+@basic_auth.required
+def get_dash(username):
+    if request.authorization["username"] == username:
+    db_array = get_db()
+    user_id = get_user_id(username)
+    followers_list = []
+    for db in db_array:
+        server_followers = db.execute('''SELECT who_id FROM follower WHERE whom_id = ?''', [user_id])
+        for follower in server_followers:
+            followers_list.append(follower[0])
+    follower_messages = []
+    for follower_id in followers_list:
+        for db in db_array:
+            messages = db.execute('''SELECT message.author_id, message.message_id, message.pub_date,
+             message.text, user.username FROM message, user WHERE message.author_id=? 
+             AND user.user_id=?''', (follower_id, follower_id))
+            if messages is not None:
+                for row in messages:
+                    key = messages.description
+                    follower_messages.append({key[4][0]: row[4], key[3][0]: row[3],
+                                              key[2][0]: row[2], key[1][0]: row[1],
+                                              key[0][0]: row[0]})
+    follower_messages = sorted(follower_messages, key=lambda k: k['pub_date'])
+    return jsonify({'dashboard': follower_messages})
+
+"""
+Route for Api Follow
+This route requires authentication, the fields must be filled out accordingly in the request.
+Sending an authenticated POST request to this endpoint makes the follower user follow the followee user.
+Ex.
+/api/users/Daniel/follow/Kaz
+With authenticated Daniel login would make the user Daniel follow the user Kaz
+"""
+@app.route('/api/users/<follower>/follow/<followee>', methods = ['POST'])
+@basic_auth.required
+def api_follow(follower, followee):
+    follower_id = get_user_id(follower)
+    followee_id = get_user_id(followee)
+    if request.authorization["username"] == follower:
+       if follower_id == followee_id:
+           return jsonify({"Error" : "You can't follow yourself"})
+       if followee_id is None or follower_id is None:
+           return jsonify({"status code" : "404: User not found."})
+       db_array = get_db()
+       shard_server = int(follower_id) % 3
+       db = db_array[shard_server]
+       db.execute('''INSERT INTO follower (who_id, whom_id) VALUES(?, ?)''', (follower_id, follower_id))
+       m = "Success, you unfollowed " + followee
+       return jsonify({"message": m})
+    else:
+        return jsonify({"status code": "403 Forbidden: You're trying to make someone who isn't you unfollow someone else."})
+"""
+Route for Api Unfollow
+This route requires authentication, the fields must be filled out accordingly in the request.
+Sending an authenticated DELETE request to this endpoint makes the follower user unfollow the followee user.
+Ex.
+/api/users/Daniel/follow/Kaz
+With authenticated Daniel login would make the user Daniel unfollow the user Kaz
+"""
+@app.route('/api/users/<follower>/unfollow/<followee>', methods = ['DELETE'])
+@basic_auth.required
+def api_unfollow(follower, followee):
+    follower_id = get_user_id(follower)
+    followee_id = get_user_id(followee)
+    if request.authorization["username"] == follower:
+        if follower_id == followee_id:
+            return jsonify({"Error" : "You can't unfollow yourself"})
+        if follower_id is None or followee_id is None:
+            return jsonify({"status code" : "404: User not found."})
+        db_array = get_db()
+        shard_server = int(follower_id) % 3
+        db = db_array[shard_server]
+        db.execute('''DELETE FROM follower WHERE who_id = ? AND whom_id = ?''', [follower_id, followee_id])
+        db.commit()
+        m = "Success, you unfollowed " + followee
+        return jsonify({"message" : m})
+    else:
+        return jsonify({"status code" : "403 Forbidden: You're trying to make someone who isn't you unfollow someone else."})
