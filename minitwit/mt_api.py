@@ -351,29 +351,27 @@ def get_following(username):
         return_dict[str(i + 1)] = follower_names[i]
     return jsonify({"following" : return_dict})
 
-# """
-# API Route for posting
-# This route requires authentication, the fields must be filled out accordingly in the request.
-# In the request body, put the desired text of the post under the "message" form.
-# """
-# @app.route('/api/users/<username>/post', methods = ['POST'])
-# @basic_auth.required
-# def insert_message(username):
-#     post_message = request.form.get("message")
-#     if post_message == None:
-#         return jsonify({"Error" : "There was no message in the request body."
-#                                   " Please add what you would like to post under"
-#                                   " the 'message' form in the request body"})
-#     if request.authorization["username"] == username:
-#         db = get_db()
-#         db.execute('insert into message (author_id, text, pub_date) values (?, ?, ?)',
-#             [get_user_id(username), post_message, time.time()])
-#         db.commit()
-#         m = "Success, you've made a post."
-#         return jsonify({"message" : m})
-#     else:
-#         return jsonify({"status code" : "403 Forbidden: You cannot post to a user that isn't you"})
-#
+"""
+API Route for posting
+This route requires authentication, the fields must be filled out accordingly in the request.
+In the request body, put the desired text of the post under the "message" form.
+"""
+@app.route('/api/users/<username>/post', methods = ['POST'])
+@basic_auth.required
+def insert_message(username):
+    post_message = request.form.get("message")
+    if post_message == None:
+        return jsonify({"Error" : "There was no message in the request body."
+                                  " Please add what you would like to post under"
+                                  " the 'message' form in the request body"})
+    if request.authorization["username"] == username:
+        db = get_db()
+        populate_message(db, username, post_message, time.time())
+        m = "Success, you've made a post."
+        return jsonify({"message" : m})
+    else:
+        return jsonify({"status code" : "403 Forbidden: You cannot post to a user that isn't you"})
+
 # """
 # API route for getting a users Dashboard (Timeline of followed users)
 # This route requires authentication, the fields must be filled out accordingly in the request.
