@@ -8,8 +8,8 @@ create table user (
 
 drop table if exists follower;
 create table follower (
-  who_id GUID primary key,
-  whom_id GUID NOT NULL
+  who_id GUID NOT NULL,
+  whom_id GUID primary key
 );
 
 drop table if exists message;

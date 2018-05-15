@@ -39,6 +39,7 @@ def get_username(x):
 
 def get_user_id(x):
     r = requests.get(API_BASE_URL + "/api/users/" + str(x) + "/id")
+
     return r.json()['id']
 
 
@@ -113,8 +114,8 @@ def user_timeline(username):
         followed_request = requests.get(API_BASE_URL + "/api/users/" +
                                         g.user.username + "/following")
         check_dict = followed_request.json()["following"]
-        for x in range(1,len(check_dict)):
-            if check_dict[str(x)] == username:
+        for i, x in enumerate(check_dict):
+            if check_dict[str(i + 1)] == username:
                 followed = True
     r = requests.get(API_BASE_URL + "/api/users/" + username + "/timeline")
     user_timeline_items = r.json()[str(username) + '\'s timeline']

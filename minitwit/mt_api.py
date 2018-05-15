@@ -201,7 +201,7 @@ def get_email(username):
 def get_username(user_id):
     """Convenience method to look up the id for a username."""
     db = get_username_db()
-    result = db.execute('''SELECT username FROM id WHERE user_id=?''', (UUID(user_id),))
+    result = db.execute('''SELECT username FROM id WHERE user_id=?''', (UUID(str(user_id)),))
     username = result.fetchone()[0]
     return username
 
@@ -412,7 +412,7 @@ def get_dash(username):
     user_id = get_user_id(username)
     followers_list = []
     for db in db_array:
-        server_followers = db.execute('''SELECT who_id FROM follower WHERE whom_id = ?''', [user_id])
+        server_followers = db.execute('''SELECT whom_id FROM follower WHERE who_id = ?''', [user_id])
         for follower in server_followers:
             followers_list.append(follower[0])
     follower_messages = []
@@ -443,19 +443,21 @@ With authenticated Daniel login would make the user Daniel follow the user Kaz
 def api_follow(follower, followee):
     follower_id = get_user_id(follower)
     followee_id = get_user_id(followee)
-    if request.authorization["username"] == follower:
-       if follower_id == followee_id:
-           return jsonify({"Error" : "You can't follow yourself"})
-       if followee_id is None or follower_id is None:
-           return jsonify({"status code" : "404: User not found."})
-       db_array = get_db()
-       shard_server = int(follower_id) % 3
-       db = db_array[shard_server]
-       db.execute('''INSERT INTO follower (who_id, whom_id) VALUES(?, ?)''', (follower_id, follower_id))
-       m = "Success, you unfollowed " + followee
-       return jsonify({"message": m})
+    if request.authorization["username"] != follower:
+        return jsonify(
+            {"status code": "403 Forbidden: You're trying to make someone who isn't you follow someone else"})
     else:
-        return jsonify({"status code": "403 Forbidden: You're trying to make someone who isn't you unfollow someone else."})
+        if follower_id == followee_id:
+            return jsonify({"Error": "You can't follow yourself"})
+        if followee_id is None or follower_id is None:
+            return jsonify({"status code": "404: User not found."})
+        db_array = get_db()
+        shard_server = int(follower_id) % 3
+        db = db_array[shard_server]
+        db.execute('''INSERT INTO follower (who_id, whom_id) VALUES(?, ?)''', (follower_id, followee_id))
+        db.commit()
+        m = "Success, you followed " + followee
+        return jsonify({"message": m})
 """
 Route for Api Unfollow
 This route requires authentication, the fields must be filled out accordingly in the request.
@@ -469,17 +471,18 @@ With authenticated Daniel login would make the user Daniel unfollow the user Kaz
 def api_unfollow(follower, followee):
     follower_id = get_user_id(follower)
     followee_id = get_user_id(followee)
-    if request.authorization["username"] == follower:
+    if request.authorization["username"] != follower:
+        return jsonify(
+            {"status code": "403 Forbidden: You're trying to make someone who isn't you unfollow someone else."})
+    else:
         if follower_id == followee_id:
-            return jsonify({"Error" : "You can't unfollow yourself"})
+            return jsonify({"Error": "You can't unfollow yourself"})
         if follower_id is None or followee_id is None:
-            return jsonify({"status code" : "404: User not found."})
+            return jsonify({"status code": "404: User not found."})
         db_array = get_db()
         shard_server = int(follower_id) % 3
         db = db_array[shard_server]
         db.execute('''DELETE FROM follower WHERE who_id = ? AND whom_id = ?''', [follower_id, followee_id])
         db.commit()
         m = "Success, you unfollowed " + followee
-        return jsonify({"message" : m})
-    else:
-        return jsonify({"status code" : "403 Forbidden: You're trying to make someone who isn't you unfollow someone else."})
+        return jsonify({"message": m})
