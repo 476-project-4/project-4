@@ -305,52 +305,52 @@ def get_user(username):
             results.append({key[0][0]: row[0], key[1][0]: row[1], key[2][0]: row[2], key[3][0]: row[3]})
     return jsonify({'user': results})
 
-#
-# """
-# API Route for getting users who username is followed by
-# Send a GET request to "/api/users/<username>/followers" (replacing <username> with desired username)
-# to get back all of the users following that user in a json.
-# """
-# @app.route('/api/users/<username>/followers', methods = ['GET'])
-# def get_followers(username):
-#     cursor = get_db().cursor()
-#     user_id = get_user_id(username)
-#     if user_id is None:
-#         return jsonify({"status code" : "404"})
-#     cursor.execute('''select who_id from follower where whom_id="''' + str(user_id) + '''"''')
-#     follower_ids = [dict((cursor.description[i][0], value)
-#               for i, value in enumerate(row)) for row in cursor.fetchall()]
-#     follower_names = []
-#     for i in range(len(follower_ids)):
-#         name = get_username(int(follower_ids[i].values()[0]))
-#         follower_names.append(name)
-#     return_dict = {}
-#     for i in range(0, len(follower_names)):
-#         return_dict[str(i + 1)] = follower_names[i]
-#     return jsonify({"followers" : return_dict})
-#
-# """
-# API Route for getting users who username is following
-# Send a GET request to "/api/users/<username>/following" (replacing <username> with desired username)
-# to get back all of the users that user is following in a json."""
-# @app.route('/api/users/<username>/following', methods = ['GET'])
-# def get_following(username):
-#     cursor = get_db().cursor()
-#     user_id = get_user_id(username)
-#     if user_id is None:
-#         return jsonify({"status code" : "404"})
-#     cursor.execute('''select whom_id from follower where who_id="''' def insert_user(db_array, username, email, pw)
-#     follower_ids = [dict((cursor.description[i][0], value)
-#               for i, value in enumerate(row)) for row in cursor.fetchall()]
-#     follower_names = []
-#     for i in range(len(follower_ids)):
-#         name = get_username(int(follower_ids[i].values()[0]))
-#         follower_names.append(name)
-#     return_dict = {}
-#     for i in range(0, len(follower_names)):
-#         return_dict[str(i + 1)] = follower_names[i]
-#     return jsonify({"following" : return_dict})
-#
+
+"""
+API Route for getting users who username is followed by
+Send a GET request to "/api/users/<username>/followers" (replacing <username> with desired username)
+to get back all of the users following that user in a json.
+"""
+@app.route('/api/users/<username>/followers', methods = ['GET'])
+def get_followers(username):
+    user_id = get_user_id(username)
+    if user_id is None:
+        return jsonify({"status code" : "404"})
+    cursor = get_db()[int(user_id) % 3].cursor()
+    cursor.execute('''select who_id from follower where whom_id=?''', (user_id,))
+    follower_ids = [dict((cursor.description[i][0], value)
+             for i, value in enumerate(row)) for row in cursor.fetchall()]
+    follower_names = []
+    for i in range(len(follower_ids)):
+        name = get_username(follower_ids[i].values()[0])
+        follower_names.append(name)
+    return_dict = {}
+    for i in range(0, len(follower_names)):
+        return_dict[str(i + 1)] = follower_names[i]
+    return jsonify({"followers" : return_dict})
+
+"""
+API Route for getting users who username is following
+end a GET request to "/api/users/<username>/following" (replacing <username> with desired username)
+to get back all of the users that user is following in a json."""
+@app.route('/api/users/<username>/following', methods = ['GET'])
+def get_following(username):
+    user_id = get_user_id(username)
+    if user_id is None:
+        return jsonify({"status code" : "404"})
+    cursor = get_db()[int(user_id) % 3].cursor()
+    cursor.execute('''select whom_id from follower where who_id=?''', (user_id,))
+    follower_ids = [dict((cursor.description[i][0], value)
+              for i, value in enumerate(row)) for row in cursor.fetchall()]
+    follower_names = []
+    for i in range(len(follower_ids)):
+        name = get_username(follower_ids[i].values()[0])
+        follower_names.append(name)
+    return_dict = {}
+    for i in range(0, len(follower_names)):
+        return_dict[str(i + 1)] = follower_names[i]
+    return jsonify({"following" : return_dict})
+
 # """
 # API Route for posting
 # This route requires authentication, the fields must be filled out accordingly in the request.
