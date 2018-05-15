@@ -20,20 +20,26 @@ from flask import Flask, request, session, url_for, redirect, \
      render_template, abort, g, flash, _app_ctx_stack, jsonify
 from werkzeug import check_password_hash, generate_password_hash
 from flask_basicauth import BasicAuth
-from mt_api import get_username, get_user_id, query_db, \
-    query_db_json, get_db, close_databases, get_g_user, restartdb_command
 
 # configuration
 PER_PAGE = 30
 DEBUG = True
 SECRET_KEY = b'_5#y2L"F4Q8z\n\xec]/'
-API_BASE_URL = "http://localhost:8080"
+API_BASE_URL = "http://localhost:5001"
 
 # create our little application :)
 app = Flask('minitwit')
 #app.run(debug=True, use_debugger=False, use_reloader=False)
 app.config.from_object(__name__)
 app.config.from_envvar('MINITWIT_SETTINGS', silent=True)
+
+def get_username(x):
+    r = requests.get(API_BASE_URL + "/api/users/" + str(x) + "/username")
+    return r.json()['username']
+
+def get_user_id(x):
+    r = requests.get(API_BASE_URL + "/api/users/" + str(x) + "/id")
+    return r.json()['id']
 
 
 def format_datetime(timestamp):
@@ -66,7 +72,9 @@ def convert_user(x):
 def before_request():
     g.user = None
     if 'user_id' in session:
-        g.user = get_g_user()
+        username = get_username(session['user_id'])
+        r = requests.get(API_BASE_URL + "/api/users/" + username).json()['user'][0]
+        g.user = convert_user(r)
 
 @app.route('/')
 def timeline():
@@ -104,8 +112,9 @@ def user_timeline(username):
     if g.user:
         followed_request = requests.get(API_BASE_URL + "/api/users/" +
                                         g.user.username + "/following")
-        for x in followed_request.json()["following"]:
-            if get_username(x) == username:
+        check_dict = followed_request.json()["following"]
+        for x in range(1,len(check_dict)):
+            if check_dict[str(x)] == username:
                 followed = True
     r = requests.get(API_BASE_URL + "/api/users/" + username + "/timeline")
     user_timeline_items = r.json()[str(username) + '\'s timeline']

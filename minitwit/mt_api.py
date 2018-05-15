@@ -142,10 +142,9 @@ def insert_user(db_array, username, email, pw):
     shard_server = int(user_id) % 3
     user_id_db = get_username_db()
     user_id_db.execute('''INSERT INTO id (user_id, username)
-      VALUES (?, "''' + username + '''")''', (user_id, ))
+      VALUES (?, ?)''', (user_id, username))
     db_array[shard_server].execute('''INSERT INTO user (user_id, username, email, pw_hash)
-      VALUES (?, "''' + username + '''", "''' + email + '''", "''' +
-        str(generate_password_hash(pw)) + '''")''', (user_id, ))
+      VALUES (?, ?, ?, ?)''', (user_id, username, email, str(generate_password_hash(pw))))
     db_array[shard_server].commit()
     user_id_db.commit()
     user_id_db.close()
@@ -186,13 +185,27 @@ def restartdb_command():
 def get_user_id(username):
     """Convenience method to look up the id for a username."""
     db = get_username_db()
-    db_array = get_db()
-    result = db.execute('''SELECT user_id FROM id WHERE username="''' + username + '''";''')
+    result = db.execute('''SELECT user_id FROM id WHERE username=?''', (username,))
     user_id = result.fetchone()[0]
     return user_id
 
+def get_email(username):
+    """Convenience method to look up the id for a username."""
+    db = get_db()
+    shard_server = int(get_user_id(username)) % 3
+    result = db[shard_server].execute('''SELECT email FROM user WHERE username=?''', (username,))
+    email = result.fetchone()[0]
+    return email
+
 
 def get_username(user_id):
+    """Convenience method to look up the id for a username."""
+    db = get_username_db()
+    result = db.execute('''SELECT username FROM id WHERE user_id=?''', (UUID(user_id),))
+    username = result.fetchone()[0]
+    return username
+
+def get_username_no_conversion(user_id):
     """Convenience method to look up the id for a username."""
     db = get_username_db()
     result = db.execute('''SELECT username FROM id WHERE user_id=?''', (user_id,))
@@ -242,6 +255,7 @@ def get_public():
                 key = user_rows.description
                 results.append({key[0][0]: row[0], key[1][0]: row[1], key[2][0]: row[2], key[3][0]: row[3], key[4][0]: row[4], key[5][0]: row[5]})
     sorted_results = sorted(results, key=lambda k: k['pub_date'])
+    sorted_results.reverse()
     return jsonify({'public timeline': sorted_results})
 
 """
@@ -323,7 +337,7 @@ def get_followers(username):
              for i, value in enumerate(row)) for row in cursor.fetchall()]
     follower_names = []
     for i in range(len(follower_ids)):
-        name = get_username(follower_ids[i].values()[0])
+        name = get_username_no_conversion(follower_ids[i].values()[0])
         follower_names.append(name)
     return_dict = {}
     for i in range(0, len(follower_names)):
@@ -345,12 +359,22 @@ def get_following(username):
               for i, value in enumerate(row)) for row in cursor.fetchall()]
     follower_names = []
     for i in range(len(follower_ids)):
-        name = get_username(follower_ids[i].values()[0])
+        name = get_username_no_conversion(follower_ids[i].values()[0])
         follower_names.append(name)
     return_dict = {}
     for i in range(0, len(follower_names)):
         return_dict[str(i + 1)] = follower_names[i]
     return jsonify({"following" : return_dict})
+
+@app.route('/api/users/<id>/username', methods = ['GET'])
+def get_name(id):
+    username = get_username(id)
+    return jsonify({'username' : username})
+
+@app.route('/api/users/<username>/id', methods = ['GET'])
+def get_id(username):
+    user_id = get_user_id(username)
+    return jsonify({'id' : user_id})
 
 """
 API Route for posting
@@ -382,7 +406,8 @@ users that the authenticated user follows.
 @app.route('/api/users/<username>/dashboard', methods = ['GET'])
 @basic_auth.required
 def get_dash(username):
-    if request.authorization["username"] == username:
+    if request.authorization["username"] != username:
+        return jsonify({'error': 'this is not your dashboard'})
     db_array = get_db()
     user_id = get_user_id(username)
     followers_list = []
@@ -394,14 +419,14 @@ def get_dash(username):
     for follower_id in followers_list:
         for db in db_array:
             messages = db.execute('''SELECT message.author_id, message.message_id, message.pub_date,
-             message.text, user.username FROM message, user WHERE message.author_id=? 
+             message.text, user.username FROM message, user WHERE message.author_id=?
              AND user.user_id=?''', (follower_id, follower_id))
             if messages is not None:
                 for row in messages:
                     key = messages.description
                     follower_messages.append({key[4][0]: row[4], key[3][0]: row[3],
                                               key[2][0]: row[2], key[1][0]: row[1],
-                                              key[0][0]: row[0]})
+                                              key[0][0]: row[0], 'email': get_email(row[4])})
     follower_messages = sorted(follower_messages, key=lambda k: k['pub_date'])
     return jsonify({'dashboard': follower_messages})
 
