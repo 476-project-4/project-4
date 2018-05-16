@@ -116,7 +116,6 @@ def user_inserts(db_array):
     insert_user(db_array, "Sollis", "bar@foo.com", "barfoo")
     insert_user(db_array, "Kaz", "foo@foo.com", "foofoo")
     insert_user(db_array, "Antonio", "bar@bar.com", "barbar")
-    insert_user(db_array, "slut", "test@bar.com", "barbar")
 
 
 def message_inserts(db_array):
@@ -185,9 +184,14 @@ def restartdb_command():
 def get_user_id(username):
     """Convenience method to look up the id for a username."""
     db = get_username_db()
-    result = db.execute('''SELECT user_id FROM id WHERE username=?''', (username,))
-    user_id = result.fetchone()[0]
-    return user_id
+    result = db.execute('''SELECT user_id FROM id WHERE username=?''', (str(username),))
+    a_result = result.fetchone()
+    if not a_result:
+        return None
+    else:
+        user_id = a_result[0]
+        return user_id
+
 
 def get_email(username):
     """Convenience method to look up the id for a username."""
@@ -202,8 +206,12 @@ def get_username(user_id):
     """Convenience method to look up the id for a username."""
     db = get_username_db()
     result = db.execute('''SELECT username FROM id WHERE user_id=?''', (UUID(str(user_id)),))
-    username = result.fetchone()[0]
-    return username
+    a_result = result.fetchone()
+    if not a_result:
+        return None
+    else:
+        username = a_result[0]
+        return username
 
 def get_username_no_conversion(user_id):
     """Convenience method to look up the id for a username."""
@@ -416,6 +424,7 @@ def get_dash(username):
         for follower in server_followers:
             followers_list.append(follower[0])
     follower_messages = []
+    followers_list.append(get_user_id(username))
     for follower_id in followers_list:
         for db in db_array:
             messages = db.execute('''SELECT message.author_id, message.message_id, message.pub_date,
@@ -428,6 +437,7 @@ def get_dash(username):
                                               key[2][0]: row[2], key[1][0]: row[1],
                                               key[0][0]: row[0], 'email': get_email(row[4])})
     follower_messages = sorted(follower_messages, key=lambda k: k['pub_date'])
+    follower_messages.reverse()
     return jsonify({'dashboard': follower_messages})
 
 """
